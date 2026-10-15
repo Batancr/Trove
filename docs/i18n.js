@@ -166,7 +166,7 @@ const ZH = {
   'Your orders, alerts, Wanted posts, settings and 中文 are here.': '你的订单、提醒、求购、设置和语言切换都在这里。',
   'Colours': '配色', 'Background': '背景', 'Buttons': '按钮', 'Saved in this browser. Switch any time.': '保存在此浏览器中，可随时切换。',
   'White': '白色', 'Cream': '奶油色', 'Light blue': '浅蓝', 'Light peach': '浅桃色', 'Creamy orange': '奶油橙', 'Light cream': '浅奶油色',
-  'Navy': '藏青', 'Charcoal': '炭灰', 'Sage': '灰绿',
+  'Match device': '跟随设备', 'Dark': '深色', 'Navy': '藏青', 'Charcoal': '炭灰', 'Sage': '灰绿',
   'Fees you paid': '你支付的费用', 'No fees for you or your buyers. Trove pays the card processing.': '你和买家都不用付费。刷卡手续费由 Trove 承担。',
   // toasts and errors
   'Added to cart.': '已加入购物车。', 'Sent.': '已发送。', 'Saved.': '已保存。', 'Listed.': '已上架。', 'Deleted.': '已删除。', 'Demo reset.': '演示已重置。',

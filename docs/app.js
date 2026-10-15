@@ -151,12 +151,15 @@ const icon = (k, size = 30) => `<svg viewBox="0 0 32 32" width="${size}" height=
 // ---------- colour drafts ----------
 
 const LOOKS = {
-  bg: [['white', 'White', '#ffffff'], ['cream', 'Cream', '#fffbf5'], ['blue', 'Light blue', '#f6fafe'], ['peach', 'Light peach', '#fff8f1']],
+  bg: [['auto', 'Match device', 'linear-gradient(135deg,#ffffff 50%,#15171a 50%)'], ['white', 'White', '#ffffff'], ['cream', 'Cream', '#fffbf5'], ['blue', 'Light blue', '#f6fafe'], ['peach', 'Light peach', '#fff8f1'], ['dark', 'Dark', '#15171a']],
   btn: [['orange', 'Creamy orange', '#ffcb98'], ['cream', 'Light cream', '#ffe6cc'], ['navy', 'Navy', '#2f5f8a'], ['ink', 'Charcoal', '#1f2328'], ['sage', 'Sage', '#cfe3d4']],
 };
 function applyLook() {
   const pr = S().prefs, el = document.documentElement;
-  el.dataset.bg = pr.bg || 'white'; el.dataset.btn = pr.btn || 'orange';
+  // A light colour choice forces the light theme so it shows even when the device is in dark mode
+  const bg = pr.bg || 'auto';
+  el.dataset.bg = bg; el.dataset.btn = pr.btn || 'orange';
+  if (bg === 'auto') delete el.dataset.theme; else el.dataset.theme = bg === 'dark' ? 'dark' : 'light';
   const pop = document.getElementById('lookPop');
   if (!pop) return;
   const row = (k, title) => `<b>${title}</b><div class="sw">${LOOKS[k].map(([v, label, hex]) =>
@@ -1179,7 +1182,13 @@ document.getElementById('langBtn').addEventListener('click', () => {
 document.addEventListener('click', e => {
   document.querySelectorAll('details.menu, details.look').forEach(m => { if (m.open && !m.contains(e.target)) m.open = false; });
   const lk = e.target.closest('[data-look]');
-  if (lk) { S().prefs[lk.dataset.look] = lk.dataset.v; save(); applyLook(); }
+  if (lk) {
+    const pr = S().prefs;
+    pr[lk.dataset.look] = lk.dataset.v;
+    // Button colours are drawn for light pages, so picking one on a dark or device-matched page switches to white
+    if (lk.dataset.look === 'btn' && ['auto', 'dark', undefined].includes(pr.bg)) pr.bg = 'white';
+    save(); applyLook();
+  }
   const dn = e.target.closest('[data-density]');
   if (dn) { e.preventDefault(); S().prefs.density = S().prefs.density === 'compact' ? 'large' : 'compact'; save(); route(); }
 });
