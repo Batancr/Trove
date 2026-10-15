@@ -4,6 +4,30 @@
 // These translations were written without a native speaker's review: have one check them before launch.
 
 const ZH = {
+  'Recent sales': '最近的销售', 'See all': '查看全部', 'Shipped': '已发货', 'Meetup': '见面交易', 'profit': '利润', 'Show fewer': '收起', 'Show all': '显示全部',
+  // console layout and landing
+  'Overview': '概览', 'What needs doing, and how the last 30 days went.': '要处理的事，以及最近 30 天的情况。',
+  'Meetups and ship-by dates for the next two weeks.': '未来两周的见面和发货期限。', 'Everything you have for sale, plus drafts.': '你在售的所有商品和草稿。',
+  'Questions to answer, and who is watching what.': '要回答的问题，以及谁在关注什么。', 'What you earned, what is on the way, and what each sale cost.': '已赚到的、在路上的，以及每笔销售的成本。',
+  'What sells, when, and where buyers drop off.': '什么好卖、何时好卖，以及买家在哪一步离开。', 'How your shop looks to buyers.': '买家看到的店铺样子。',
+  'Selling': '销售', 'Analytics': '分析', 'Shop': '店铺', 'View your shop': '查看你的店铺', 'New listing': '上架新商品',
+  'Open insights': '打开洞察', 'Sales, last 30 days': '最近 30 天销售额', 'Orders, last 30 days': '最近 30 天订单', 'Listing views, last 30 days': '最近 30 天浏览量',
+  'Next meetup': '下次见面', 'saves and carts': '次收藏和加购', 'questions': '个问题', 'order': '个订单', 'orders': '个订单',
+  'Last 8 weeks, counted when the buyer has the item.': '最近 8 周，买家收到商品后计入。', 'Completed orders': '已完成订单',
+  'Sales per day': '每天销售额', 'Orders per day': '每天订单', 'Views per day': '每天浏览',
+  // insights charts
+  'Last 4 weeks': '最近 4 周', 'Last 12 weeks': '最近 12 周', 'All time': '全部', 'Date range': '时间范围',
+  'Item sales': '商品销售额', 'Shipping charged': '收取的运费', 'What items cost you': '商品成本', 'Shipping labels': '运单费用',
+  'From sales to profit': '从销售额到利润', 'Money in': '收入', 'Costs': '成本', 'Step': '步骤', 'Amount': '金额',
+  'Sales by day': '每天的销售', 'Less': '少', 'More': '多', 'Day': '星期', 'Sales': '销售额',
+  'Price and time to sell': '价格和卖出所需时间', 'Days to sell': '卖出天数', 'From views to sold': '从浏览到成交',
+  'Views': '浏览', 'Saves and questions': '收藏和提问', 'Added to cart': '加入购物车', 'Count': '数量', 'Kept': '留存',
+  'How long listings have waited': '在售商品等了多久', '0 to 7 days': '0 到 7 天', '1 to 4 weeks': '1 到 4 周', '1 to 2 months': '1 到 2 个月',
+  'Over 2 months': '超过 2 个月', 'Edit price': '修改价格', 'None.': '没有。', 'Click a bar to see those listings.': '点击柱子查看这些商品。',
+  'Waiting': '等待时间', 'Value': '价值', 'What you paid and what it sold for': '成本和售价', 'Average cost': '平均成本',
+  'Average price': '平均售价', 'Profit per item': '每件利润', 'When handoffs happen': '交接时间分布',
+  'Morning': '上午', 'Afternoon': '下午', 'Evening': '傍晚', 'Late': '深夜', 'Orders': '订单',
+  'Typical time to sell': '一般卖出时间', 'No sales in this range yet. Try All time.': '这段时间还没有销售。试试“全部”。', 'Show table': '显示表格',
   // header, menu, footer
   'Skip to content': '跳到内容', 'Demo.': '演示。', 'No real payments; saved in this browser only.': '不会真实付款；数据只保存在此浏览器中。',
   'Skip ahead 1 day': '快进 1 天', 'Reset': '重置', 'Search anything': '搜索任何东西', 'Search': '搜索', 'Sell': '出售',

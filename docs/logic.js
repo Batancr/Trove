@@ -453,6 +453,109 @@ function groupByCategory(items, order) {
   return keys.map(k => ({ category: k, items: groups[k] }));
 }
 
+// ---------- seller analytics (charts on the Insights tab) ----------
+// All take a time window [from, to] in ms so one date filter scopes every chart.
+
+const SOLD = ['released', 'completed'];
+const soldIn = (orders, sellerId, from, to) =>
+  orders.filter(o => o.sellerId === sellerId && SOLD.includes(o.state) && o.closedAt > from && o.closedAt <= to);
+
+// Totals for a window and the window before it, for "vs previous period" deltas.
+function periodCompare(orders, sellerId, now, days, cfg = CONFIG) {
+  const sum = (from, to) => soldIn(orders, sellerId, from, to).reduce((t, o) => {
+    const p = payoutFor(o, cfg);
+    return { sales: t.sales + o.subtotal, profit: t.profit + p.profit, count: t.count + 1 };
+  }, { sales: 0, profit: 0, count: 0 });
+  return { current: sum(now - days * DAY, now), previous: sum(now - 2 * days * DAY, now - days * DAY) };
+}
+
+// One cell per calendar day (local time), oldest first, for the sales calendar.
+function salesByDay(orders, sellerId, now, days) {
+  const end = new Date(now); end.setHours(0, 0, 0, 0);
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
+    out.push({ start: d.getTime(), end: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime(), weekday: d.getDay(), total: 0, count: 0 });
+  }
+  soldIn(orders, sellerId, out[0].start - 1, out[out.length - 1].end).forEach(o => {
+    const c = out.find(x => o.closedAt >= x.start && o.closedAt < x.end);
+    if (c) { c.total += o.subtotal; c.count++; }
+  });
+  return out;
+}
+
+// Each sold item: its price and how many days it was listed before it sold.
+function timeToSell(orders, items, sellerId, from, to) {
+  const out = [];
+  soldIn(orders, sellerId, from, to).forEach(o => o.items.forEach(line => {
+    const it = items.find(i => i.id === line.id);
+    if (!it || !it.listedAt) return;
+    out.push({ id: it.id, title: it.title, category: it.category || 'Other', price: line.price,
+      days: Math.max(0, Math.round((o.closedAt - it.listedAt) / DAY * 10) / 10) });
+  }));
+  return out;
+}
+
+// Views -> saves or questions -> carts -> sold, for one seller's items in a window.
+function salesFunnel(events, orders, items, sellerId, from, to) {
+  const mine = new Set(items.filter(i => i.sellerId === sellerId).map(i => i.id));
+  const ev = events.filter(e => mine.has(e.itemId) && e.at > from && e.at <= to);
+  const n = kinds => ev.filter(e => kinds.includes(e.kind)).length;
+  const sold = soldIn(orders, sellerId, from, to).reduce((s, o) => s + o.items.length, 0);
+  return [
+    { step: 'Views', value: n(['view']) },
+    { step: 'Saves and questions', value: n(['save', 'question']) },
+    { step: 'Added to cart', value: n(['cart']) },
+    { step: 'Sold', value: sold },
+  ];
+}
+
+// How long current listings have been waiting, in age bands.
+const AGE_BANDS = [[0, 7, '0 to 7 days'], [7, 30, '1 to 4 weeks'], [30, 60, '1 to 2 months'], [60, Infinity, 'Over 2 months']];
+function stockAge(items, sellerId, now) {
+  const live = items.filter(i => i.sellerId === sellerId && i.status === 'active');
+  return AGE_BANDS.map(([lo, hi, label]) => {
+    const list = live.filter(i => { const d = (now - i.listedAt) / DAY; return d >= lo && d < hi; });
+    return { label, count: list.length, value: list.reduce((s, i) => s + i.price * (i.qty || 1), 0), items: list };
+  });
+}
+
+// From sales to profit: what each cost takes out.
+function profitSteps(orders, sellerId, from, to, cfg = CONFIG) {
+  const t = { sales: 0, shipping: 0, itemCost: 0, labels: 0, fees: 0, profit: 0 };
+  soldIn(orders, sellerId, from, to).forEach(o => {
+    const p = payoutFor(o, cfg);
+    t.sales += o.subtotal; t.shipping += o.shipping; t.itemCost += p.itemCost; t.labels += p.label;
+    t.fees += p.fee + p.marketplace; t.profit += p.profit;
+  });
+  return t;
+}
+
+// Average cost and price per item, by category: the markup a seller gets on each kind of thing.
+function markupByCategory(orders, items, sellerId, from, to) {
+  const g = {};
+  soldIn(orders, sellerId, from, to).forEach(o => o.items.forEach(line => {
+    const it = items.find(i => i.id === line.id);
+    const c = (it && it.category) || 'Other';
+    g[c] = g[c] || { category: c, cost: 0, price: 0, n: 0 };
+    g[c].cost += (line.cost || 0) * line.qty; g[c].price += line.price * line.qty; g[c].n += line.qty;
+  }));
+  return Object.values(g).map(x => ({ category: x.category, n: x.n, cost: Math.round(x.cost / x.n), price: Math.round(x.price / x.n) }))
+    .sort((a, b) => (b.price - b.cost) - (a.price - a.cost));
+}
+
+// When handoffs happen: weekday (0 = Sunday) by time of day, from completed meetups and drop-offs.
+const TIME_BANDS = [[6, 12, 'Morning'], [12, 17, 'Afternoon'], [17, 21, 'Evening'], [21, 30, 'Late']];
+function meetupTimes(orders, sellerId, from, to) {
+  const grid = Array.from({ length: 7 }, () => TIME_BANDS.map(() => 0));
+  soldIn(orders, sellerId, from, to).filter(o => o.meetup && o.meetup.at).forEach(o => {
+    const d = new Date(o.meetup.at), h = d.getHours() < 6 ? d.getHours() + 24 : d.getHours();
+    const b = TIME_BANDS.findIndex(([lo, hi]) => h >= lo && h < hi);
+    if (b >= 0) grid[d.getDay()][b]++;
+  });
+  return grid;
+}
+
 // ---------- accounting export ----------
 
 function csvCell(v) {
@@ -484,5 +587,6 @@ if (typeof module !== 'undefined') {
     makeHandoffCode, createOrder, canDo, transition, sweep, moneySteps, payoutFor, moneySummary,
     notificationsFor, parseQuery, search, validateListing, ordersCsv, csvCell,
     weeklySales, interestByItem, scheduleByDay, groupByCategory,
+    periodCompare, salesByDay, timeToSell, salesFunnel, stockAge, AGE_BANDS, profitSteps, markupByCategory, meetupTimes, TIME_BANDS,
   };
 }

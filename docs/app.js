@@ -120,14 +120,14 @@ const shortDate = ms => new Date(ms).toLocaleDateString(lang() === 'zh' ? 'zh-CN
 // Vertical bars drawn to scale from zero. rows: [{ label, value }]
 function barChart(rows, fmt, title) {
   const max = Math.max(1, ...rows.map(r => r.value));
-  const W = 50, H = 120, top = 18, bw = W - 14;
+  const W = 80, H = 140, top = 20, bw = 36;
   const bars = rows.map((r, i) => {
-    const h = Math.round(r.value / max * H), x = i * W + 7, y = top + H - h;
+    const h = Math.round(r.value / max * H), x = i * W + (W - bw) / 2, y = top + H - h;
     return `<rect class="bar${r.value ? '' : ' zero'}" x="${x}" y="${r.value ? y : top + H - 2}" width="${bw}" height="${r.value ? h : 2}" rx="4"><title>${esc(r.label)}: ${esc(fmt(r.value))}</title></rect>
       ${r.value ? `<text class="val" x="${x + bw / 2}" y="${y - 5}" text-anchor="middle">${esc(fmt(r.value))}</text>` : ''}
       <text x="${x + bw / 2}" y="${top + H + 16}" text-anchor="middle">${esc(r.label)}</text>`;
   }).join('');
-  return `<svg class="chart" viewBox="0 0 ${rows.length * W} ${top + H + 22}" role="img" aria-label="${esc(title)}">${bars}
+  return `<svg class="chart bars" viewBox="0 0 ${rows.length * W} ${top + H + 22}" role="img" aria-label="${esc(title)}">${bars}
     <line x1="0" x2="${rows.length * W}" y1="${top + H}" y2="${top + H}"></line></svg>`;
 }
 
@@ -151,14 +151,15 @@ const icon = (k, size = 30) => `<svg viewBox="0 0 32 32" width="${size}" height=
 // ---------- colour drafts ----------
 
 const LOOKS = {
-  bg: [['auto', 'Match device', 'linear-gradient(135deg,#ffffff 50%,#15171a 50%)'], ['white', 'White', '#ffffff'], ['cream', 'Cream', '#fffbf5'], ['blue', 'Light blue', '#f6fafe'], ['peach', 'Light peach', '#fff8f1'], ['dark', 'Dark', '#15171a']],
+  bg: [['auto', 'Default', 'linear-gradient(135deg,#fff0e2 50%,#15171a 50%)'], ['white', 'White', '#ffffff'], ['cream', 'Cream', '#fdf5e8'], ['blue', 'Light blue', '#eaf3fc'], ['peach', 'Light peach', '#fff0e2'], ['dark', 'Dark', '#15171a']],
   btn: [['orange', 'Creamy orange', '#ffcb98'], ['cream', 'Light cream', '#ffe6cc'], ['navy', 'Navy', '#2f5f8a'], ['ink', 'Charcoal', '#1f2328'], ['sage', 'Sage', '#cfe3d4']],
 };
 function applyLook() {
   const pr = S().prefs, el = document.documentElement;
   // A light colour choice forces the light theme so it shows even when the device is in dark mode
   const bg = pr.bg || 'auto';
-  el.dataset.bg = bg; el.dataset.btn = pr.btn || 'orange';
+  // Default: light peach, or dark on devices set to dark mode
+  el.dataset.bg = bg === 'auto' ? 'peach' : bg; el.dataset.btn = pr.btn || 'orange';
   if (bg === 'auto') delete el.dataset.theme; else el.dataset.theme = bg === 'dark' ? 'dark' : 'light';
   const pop = document.getElementById('lookPop');
   if (!pop) return;
@@ -684,20 +685,74 @@ function renderLegal() {
 
 // ---------- dashboard ----------
 
-function dashHead(cur) {
+// Console-style layout: a sidebar of sections (grouped like a cloud dashboard), then a page header with breadcrumb and actions.
+const SIDE_ICONS = {
+  todo: '<path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"/>',
+  schedule: '<path d="M2.5 4h11v9.5h-11zM2.5 7h11M5.5 2v3M10.5 2v3"/>',
+  listings: '<path d="M2.5 8.2V2.5h5.7l5.3 5.3-5.7 5.7z"/><circle cx="5.5" cy="5.5" r="1"/>',
+  interest: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
+  money: '<path d="M8 1.5v13M11 4.2H6.6a2 2 0 000 4h2.8a2 2 0 010 4H4.8"/>',
+  insights: '<path d="M2 13.5h12M4.5 11V8M8 11V4M11.5 11V6.5"/>',
+  profile: '<path d="M2.5 6.5L3.6 2.5h8.8l1.1 4M3.2 6.5v7h9.6v-7M2.5 6.5h11M6.5 13.5v-4h3v4"/>',
+  shop: '<path d="M6.5 3H3v10h10V9.5M9.5 2.5h4v4M13.5 2.5L7.5 8.5"/>',
+};
+const sideIcon = k => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SIDE_ICONS[k]}</svg>`;
+const DASH_PAGES = {
+  todo: ['Overview', 'What needs doing, and how the last 30 days went.'],
+  schedule: ['Schedule', 'Meetups and ship-by dates for the next two weeks.'],
+  listings: ['Listings', 'Everything you have for sale, plus drafts.'],
+  interest: ['Interest', 'Questions to answer, and who is watching what.'],
+  money: ['Money', 'What you earned, what is on the way, and what each sale cost.'],
+  insights: ['Insights', 'What sells, when, and where buyers drop off.'],
+  profile: ['Profile', 'How your shop looks to buyers.'],
+};
+
+function dashHead(cur, actions = '') {
   const st = S(), sid = st.actingSeller;
+  const me = st.sellers.find(s => s.id === sid) || st.sellers[0];
   const mine = st.orders.filter(o => o.sellerId === sid);
   const n = mine.filter(o => ['paid_held', 'reserved', 'problem'].includes(o.state)).length;
   const unanswered = unansweredCount();
   const meets = scheduleByDay(st.orders, sid, Store.now()).reduce((s, d) => s + d.orders.length, 0);
   const drafts = st.items.filter(i => i.sellerId === sid && i.status === 'draft').length;
-  const t = [['todo', 'To do', n], ['schedule', 'Schedule', meets], ['listings', 'Listings', drafts], ['interest', 'Interest', unanswered],
-    ['money', 'Money'], ['insights', 'Insights'], ['profile', 'Profile']];
-  return `<div class="row" style="justify-content:space-between">
-      <h1 style="margin:0">Dashboard</h1>
-      <label class="hint"><span>Demo, viewing as</span> <select data-act-change="seller" aria-label="Seller">${st.sellers.map(s => `<option value="${s.id}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-    </div>
-    <nav class="tabs" aria-label="Dashboard" style="margin-top:12px">${t.map(([id, label, c]) => `<a href="#/dashboard/${id}" ${cur === id ? 'aria-current="page"' : ''}><span>${label}</span>${c ? ` <span class="count">${c}</span>` : ''}</a>`).join('')}</nav>`;
+  const link = (id, c) => `<a href="#/dashboard/${id}" ${cur === id ? 'aria-current="page"' : ''}>${sideIcon(id)}<span>${DASH_PAGES[id][0]}</span>${c ? `<span class="count">${c}</span>` : ''}</a>`;
+  const [title, desc] = DASH_PAGES[cur];
+  return `<aside class="side" aria-label="Dashboard">
+      <label class="proj"><span class="av" aria-hidden="true">${esc((me.name || '?')[0])}</span>
+        <span class="pname"><small>Demo, viewing as</small><select data-act-change="seller" aria-label="Seller">${st.sellers.map(s => `<option value="${s.id}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></span></label>
+      <a class="btn newbtn" href="#/sell">+ <span>New listing</span></a>
+      <nav aria-label="Dashboard sections">
+        <h6>Selling</h6>${link('todo', n)}${link('schedule', meets)}${link('listings', drafts)}${link('interest', unanswered)}
+        <h6>Analytics</h6>${link('money')}${link('insights')}
+        <h6>Shop</h6>${link('profile')}<a href="#/seller/${sid}">${sideIcon('shop')}<span>View your shop</span></a>
+      </nav>
+    </aside>
+    <div class="phead"><div><nav class="crumbs" aria-label="Breadcrumb"><span>${esc(me.name)}</span><span aria-hidden="true">/</span><span>${title}</span></nav>
+      <h1>${title}</h1><p class="pdesc">${desc}</p></div>${actions ? `<div class="pact">${actions}</div>` : ''}</div>`;
+}
+
+// Latest finished orders, newest first, like an activity log.
+function recentActivity() {
+  const done = myOrders().filter(o => o.closedAt).sort((a, b) => b.closedAt - a.closedAt).slice(0, 6);
+  if (!done.length) return '';
+  return `<div class="sechead"><h2>${tr('Recent sales')}</h2><a href="#/dashboard/money">${tr('See all')}</a></div>
+    <div class="tablewrap activity"><table><tbody>${done.map(o => { const p = payoutFor(o); return `<tr><td class="muted">${esc(shortDate(o.closedAt))}</td>
+      <td>${o.items.map(i => esc(i.title)).join(', ')}</td><td><span class="chip">${esc(tr(o.fulfilment === 'ship' ? 'Shipped' : 'Meetup'))}</span></td>
+      <td class="num">${money(o.subtotal)}</td><td class="num muted">+${money(p.profit)} ${tr('profit')}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+
+// Small area sparkline for metric cards. values: numbers, oldest first.
+function spark(values, label, bars = false) {
+  const W = 120, H = 32, max = Math.max(1, ...values), step = W / Math.max(1, values.length - 1);
+  if (bars) {
+    const bw = W / values.length;
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">${values.map((v, i) => v ? `<rect x="${(i * bw + bw * .15).toFixed(1)}" y="${(H - v / max * (H - 2)).toFixed(1)}" width="${(bw * .7).toFixed(1)}" height="${(v / max * (H - 2)).toFixed(1)}" rx="1"/>` : '').join('')}</svg>`;
+  }
+  const pts = values.map((v, i) => [i * step, H - 2 - v / max * (H - 4)]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  const last = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">
+    <path class="area" d="${line}L${W} ${H}L0 ${H}Z"/><path class="ln" d="${line}"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5"/></svg>`;
 }
 
 const myOrders = () => S().orders.filter(o => o.sellerId === S().actingSeller);
@@ -756,14 +811,20 @@ function renderDashTodo() {
   const week = weeklySales(st.orders, st.actingSeller, now, 1)[0];
   const next = scheduleByDay(st.orders, st.actingSeller, now).flatMap(d => d.orders).find(o => o.meetup.at >= now);
   const watching = interestByItem(st.events || [], myItems().filter(i => i.status === 'active')).reduce((s, r) => s + r.save + r.cart, 0);
-  const tile = (href, big, label) => `<a class="tile" href="#/dashboard/${href}"><b>${big}</b><span>${label}</span></a>`;
-  app.innerHTML = dashHead('todo') + `<div class="tiles">
-      ${tile('money', money(week.total), 'Sold in the last 7 days')}
-      ${tile('schedule', next ? esc(shortDate(next.meetup.at)) + ' ' + esc(timeOnly(next.meetup.at)) : '–', 'Next meetup')}
-      ${tile('interest', watching, 'Saves and carts')}
-      ${tile('interest', unansweredCount(), 'Questions to answer')}
-    </div>` + (open.length ? open.map(todoCard).join('') : `<p>Nothing to do.</p>
-    <p class="hint">Try it: buy something as a buyer, then come back.</p>`);
+  const days = salesByDay(st.orders, st.actingSeller, now, 30);
+  const mineIds = new Set(myItems().map(i => i.id));
+  const views = days.map(d => (st.events || []).filter(e => e.kind === 'view' && mineIds.has(e.itemId) && e.at >= d.start && e.at < d.end).length);
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const tile = (href, big, label, sp) => `<a class="tile" href="#/dashboard/${href}"><span>${label}</span><b>${big}</b>${sp || ''}</a>`;
+  app.innerHTML = dashHead('todo', '<a class="btn ghost small" href="#/dashboard/insights">' + tr('Open insights') + '</a>') + `<div class="tiles">
+      ${tile('money', money(sum(days.map(d => d.total))), tr('Sales, last 30 days'), spark(days.map(d => d.total), tr('Sales per day')))}
+      ${tile('money', sum(days.map(d => d.count)), tr('Orders, last 30 days'), spark(days.map(d => d.count), tr('Orders per day'), true))}
+      ${tile('interest', sum(views), tr('Listing views, last 30 days'), spark(views, tr('Views per day')))}
+      ${tile('schedule', next ? esc(shortDate(next.meetup.at)) + ' ' + esc(timeOnly(next.meetup.at)) : '–', tr('Next meetup'), `<small class="sub">${watching} ${tr('saves and carts')} · ${unansweredCount()} ${tr('questions')}</small>`)}
+    </div>
+    <div class="sechead"><h2>To do</h2><span class="muted">${open.length} ${tr(open.length === 1 ? 'order' : 'orders')}</span></div>
+    ` + (open.length ? open.map(todoCard).join('') : `<p>Nothing to do.</p>
+    <p class="hint">Try it: buy something as a buyer, then come back.</p>`) + recentActivity();
 }
 
 // Meetups and ship-by deadlines on a two-week strip, then day by day.
@@ -936,49 +997,278 @@ function matchWants(it) {
   });
 }
 
+let moneyAll = false;
 function renderDashMoney() {
   const orders = myOrders();
   const m = moneySummary(orders);
   const closed = orders.filter(o => o.closedAt && o.state !== 'cancelled');
-  app.innerHTML = dashHead('money') + `
+  app.innerHTML = dashHead('money', `<button type="button" class="ghost small" data-act="csv" ${closed.length ? '' : 'disabled'}>Export for accounting</button>`) + `
     <div class="tiles">
       <div class="tile"><b>${money(m.held)}</b><span>On the way to you</span></div>
       <div class="tile"><b>${money(m.released + m.inPerson)}</b><span>Earned</span></div>
       <div class="tile"><b>${money(CONFIG.trovePaysCardFee ? 0 : m.fees)}</b><span>${CONFIG.trovePaysCardFee ? tr('Fees you paid') : tr('Card fees')}</span></div>
       <div class="tile"><b>${money(m.profit)}</b><span>Profit after costs</span></div>
     </div>
-    <h2>Sales by week</h2>
-    ${barChart(weeklySales(S().orders, S().actingSeller, Store.now(), 8).map(w => ({ label: shortDate(w.start + DAY), value: w.total })), shortMoney, tr('Sales by week'))}
-    <div class="row" style="justify-content:space-between;margin-bottom:6px">
-      <h2 style="margin:0">Completed orders</h2>
-      <button type="button" class="ghost small" data-act="csv" ${closed.length ? '' : 'disabled'}>Export for accounting</button>
-    </div>
+    <section class="viz"><h2>Sales by week</h2><p class="take">${tr('Last 8 weeks, counted when the buyer has the item.')}</p>
+    ${barChart(weeklySales(S().orders, S().actingSeller, Store.now(), 8).map(w => ({ label: shortDate(w.start + DAY), value: w.total })), shortMoney, tr('Sales by week'))}</section>
+    <div class="sechead"><h2>Completed orders</h2><span class="muted">${closed.length}</span></div>
     ${closed.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Items</th><th class="num">Total</th><th class="num">Fee</th><th class="num">You got</th><th class="num">Profit</th></tr></thead><tbody>
-      ${closed.map(o => { const p = payoutFor(o); const rf = o.state === 'refunded'; return `<tr><td>${fmtDate(o.closedAt, false)}</td><td>${o.items.map(i => esc(i.title)).join(', ')}${rf ? ` <span class="chip red">${tr('Refunded')}</span>` : ''}</td>
+      ${closed.slice(0, moneyAll ? closed.length : 10).map(o => { const p = payoutFor(o); const rf = o.state === 'refunded'; return `<tr><td>${fmtDate(o.closedAt, false)}</td><td>${o.items.map(i => esc(i.title)).join(', ')}${rf ? ` <span class="chip red">${tr('Refunded')}</span>` : ''}</td>
         <td class="num">${money(rf ? 0 : o.total)}</td><td class="num">${money(rf ? 0 : p.fee)}</td><td class="num">${money(rf ? 0 : p.net)}</td><td class="num">${money(rf ? -p.label : p.profit)}</td></tr>`; }).join('')}
-    </tbody></table></div>` : '<p class="muted">None yet.</p>'}
+    </tbody></table></div>${closed.length > 10 ? `<p><button type="button" class="ghost small" data-act="moneyAll">${moneyAll ? tr('Show fewer') : tr('Show all') + ' ' + closed.length}</button></p>` : ''}` : '<p class="muted">None yet.</p>'}
     <p class="hint">${CONFIG.trovePaysCardFee ? tr('No fees for you or your buyers. Trove pays the card processing.') : tr('Trove charges no fee. Card fees are an estimate until payments are live.')}</p>`;
 }
 
+// ---------- insights charts ----------
+// One date range scopes every chart. Each chart has a hover and keyboard tooltip (data-tip), a table view and a one-line takeaway.
+
+let insightDays = 84, ageOpen = -1;
+const RANGES = [[28, 'Last 4 weeks'], [84, 'Last 12 weeks'], [0, 'All time']];
+const zh = () => lang() === 'zh';
+const say = (en, cn) => zh() ? cn : en;
+const loc = () => zh() ? 'zh-CN' : 'en-CA';
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+// Narrower drawings on phones so the text stays readable instead of shrinking.
+const vw = () => innerWidth < 600 ? 370 : 560;
+let lastVw = vw();
+addEventListener('resize', () => { if (vw() !== lastVw) { lastVw = vw(); if (location.hash.startsWith('#/dashboard/insights')) route(); } });
+const dayName = (d, style = 'short') => new Date(2026, 0, 4 + d).toLocaleDateString(loc(), { weekday: style });
+const median = a => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const tip = (...lines) => esc(lines.filter(Boolean).join('\n'));
+const tipAttrs = t => `tabindex="0" data-tip="${t}" aria-label="${t.replace(/\n/g, ', ')}"`;
+
+function vizCard(title, take, body, table, extra = '') {
+  return `<section class="viz${extra}"><h2>${title}</h2>${take ? `<p class="take">${take}</p>` : ''}${body}
+    ${table ? `<details class="tbl"><summary>Show table</summary><div class="tablewrap">${table}</div></details>` : ''}</section>`;
+}
+function tbl(head, rows) {
+  return `<table><thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map(r => `<tr>${r.map((c, i) => `<td${i ? ' class="num"' : ''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+const legend = items => `<div class="legend">${items.map(([cls, label]) => `<span><i class="${cls}"></i>${label}</span>`).join('')}</div>`;
+function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); return [1, 2, 2.5, 5, 10].map(m => m * p).find(m => m >= v); }
+
+function deltaTag(cur, prev, money = false) {
+  if (!insightDays) return '';
+  if (!prev) return '';
+  const p = Math.round((cur - prev) / prev * 100);
+  return `<small class="delta ${p >= 0 ? 'up' : 'down'}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p)}% <span>${say('vs the 4 weeks before', '对比前期').replace('4 weeks', insightDays === 28 ? '4 weeks' : '12 weeks')}</span></small>`;
+}
+
+// From sales to profit: each cost as a step down, so the biggest cost is easy to see.
+function waterfall(p) {
+  const steps = [['Item sales', p.sales, 'add'], ['Shipping charged', p.shipping, 'add'], ['What items cost you', -p.itemCost, 'sub'],
+    ['Shipping labels', -p.labels, 'sub']];
+  if (p.fees) steps.push(['Card fees', -p.fees, 'sub']);
+  steps.push(['Profit', p.profit, 'total']);
+  const W = vw(), H = 190, top = 24, base = top + H, bw = 32, band = W / steps.length;
+  const max = niceMax(p.sales + p.shipping);
+  const y = v => base - v / max * H;
+  let run = 0, prevEnd = null;
+  const marks = steps.map(([label, v, kind], i) => {
+    const from = kind === 'total' ? 0 : run, to = kind === 'total' ? v : run + v;
+    if (kind !== 'total') run = to;
+    const x = i * band + (band - bw) / 2, y1 = y(Math.max(from, to)), h = Math.max(2, Math.abs(y(from) - y(to)));
+    const conn = prevEnd != null ? `<line class="conn" x1="${x - band + bw}" x2="${x}" y1="${y(prevEnd)}" y2="${y(prevEnd)}"/>` : '';
+    prevEnd = kind === 'total' ? null : to;
+    const t = tip(tr(label) + ': ' + (v < 0 ? '−' : '') + money(Math.abs(v)), kind === 'sub' && p.sales ? Math.round(-v / p.sales * 100) + say('% of item sales', '% 的商品销售额') : '',
+      kind === 'total' && p.sales ? say(`${Math.round(p.profit / p.sales * 100)}% of item sales`, `占商品销售额 ${Math.round(p.profit / p.sales * 100)}%`) : '');
+    const lines = tr(label).split(' ');
+    const half = Math.ceil(lines.length / 2);
+    return `${conn}<rect class="m ${kind}" x="${x}" y="${y1}" width="${bw}" height="${h}" rx="4"/>
+      <rect class="hit" x="${i * band + 4}" y="${top - 18}" width="${band - 8}" height="${H + 18}" ${tipAttrs(t)}/>
+      <text class="val" x="${x + bw / 2}" y="${y1 - 6}" text-anchor="middle">${(v < 0 ? '−' : '') + shortMoney(Math.abs(v))}</text>
+      <text x="${x + bw / 2}" y="${base + 15}" text-anchor="middle">${esc(zh() ? tr(label) : lines.slice(0, half).join(' '))}</text>
+      ${zh() ? '' : `<text x="${x + bw / 2}" y="${base + 31}" text-anchor="middle">${esc(lines.slice(half).join(' '))}</text>`}`;
+  }).join('');
+  const biggest = steps.filter(s => s[2] === 'sub').sort((a, b) => a[1] - b[1])[0];
+  const keep = p.sales ? Math.round(p.profit / (p.sales + p.shipping) * 100) : 0;
+  const take = p.sales ? say(`You keep ${keep}¢ of every dollar buyers pay you. Your biggest cost is ${biggest[0].toLowerCase()}.`,
+    `买家付的每 1 元里你留下 ${keep} 分。最大的成本是${tr(biggest[0])}。`) : '';
+  const svg = `<svg class="chart wf" viewBox="0 0 ${W} ${base + 38}" role="group" aria-label="${esc(tr('From sales to profit'))}" style="overflow:visible">
+    <line class="axis" x1="0" x2="${W}" y1="${base}" y2="${base}"/>${marks}</svg>`;
+  return vizCard(tr('From sales to profit'), take, legend([['add', tr('Money in')], ['sub', tr('Costs')], ['total', tr('Profit')]]) + svg,
+    tbl([tr('Step'), tr('Amount')], steps.map(([l, v]) => [esc(tr(l)), (v < 0 ? '−' : '') + money(Math.abs(v))])));
+}
+
+// Calendar of sales: one square per day, darker for more sales.
+function salesCalendar(days) {
+  const st = S(), now = Store.now();
+  const cells = salesByDay(st.orders, st.actingSeller, now, days);
+  const max = Math.max(1, ...cells.map(c => c.total));
+  const lvl = v => v ? Math.min(5, Math.ceil(v / max * 5)) : 0;
+  const c = 15, g = 3, left = 34, top = 18;
+  const first = cells[0].start, firstRow = WEEK_ORDER.indexOf(cells[0].weekday);
+  const pos = (cell, i) => { const k = i + firstRow; return [Math.floor(k / 7), k % 7]; };
+  const cols = pos(null, cells.length - 1)[0] + 1;
+  const W = left + cols * (c + g), H = top + 7 * (c + g);
+  const months = [];
+  const sq = cells.map((cell, i) => {
+    const [col, row] = pos(cell, i), d = new Date(cell.start);
+    if (d.getDate() <= 7 && row === 0 || (i === 0 && d.getDate() <= 21)) months.push(`<text x="${left + col * (c + g)}" y="11">${esc(d.toLocaleDateString(loc(), { month: 'short' }))}</text>`);
+    const t = tip(d.toLocaleDateString(loc(), { weekday: 'short', month: 'short', day: 'numeric' }),
+      cell.count ? `${money(cell.total)} · ${cell.count} ${say(cell.count === 1 ? 'sale' : 'sales', '笔')}` : say('No sales', '没有销售'));
+    return `<rect class="s${lvl(cell.total)}" x="${left + col * (c + g)}" y="${top + row * (c + g)}" width="${c}" height="${c}" rx="3" ${tipAttrs(t)}/>`;
+  }).join('');
+  const rowsLbl = [0, 2, 4].map(r => `<text x="0" y="${top + r * (c + g) + 11}">${esc(dayName(WEEK_ORDER[r]))}</text>`).join('');
+  const byWd = WEEK_ORDER.map(wd => ({ wd, total: cells.filter(x => x.weekday === wd).reduce((s, x) => s + x.total, 0) }));
+  const all = byWd.reduce((s, x) => s + x.total, 0);
+  const best = byWd.slice().sort((a, b) => b.total - a.total)[0];
+  const wkend = byWd.filter(x => x.wd === 0 || x.wd === 6).reduce((s, x) => s + x.total, 0);
+  const take = all ? say(`${dayName(best.wd, 'long')}s bring in the most. Weekends are ${Math.round(wkend / all * 100)}% of your sales.`,
+    `${dayName(best.wd, 'long')}卖得最多。周末占你销售额的 ${Math.round(wkend / all * 100)}%。`) : '';
+  const svg = `<svg class="chart cal-heat" viewBox="0 0 ${W} ${H}" style="max-width:${W * 1.5}px" role="group" aria-label="${esc(tr('Sales by day'))}">${months.join('')}${rowsLbl}${sq}</svg>`;
+  const key = `<div class="ramp"><span>${tr('Less')}</span>${[0, 1, 2, 3, 4, 5].map(l => `<i class="s${l}"></i>`).join('')}<span>${tr('More')}</span></div>`;
+  return vizCard(tr('Sales by day'), take, svg + key,
+    tbl([tr('Day'), tr('Sales'), tr('Items')], byWd.map(x => [esc(dayName(x.wd, 'long')), money(x.total), cells.filter(c2 => c2.weekday === x.wd).reduce((s, c2) => s + c2.count, 0)])));
+}
+
+// Price against days to sell: do pricier things wait longer?
+function priceScatter(rows) {
+  const counts = {};
+  rows.forEach(r => { counts[r.category] = (counts[r.category] || 0) + 1; });
+  const top3 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
+  const cls = cat => { const i = top3.indexOf(cat); return i < 0 ? 'other' : 'c' + (i + 1); };
+  const W = vw(), H = 220, l = 40, b = 34, t = 26, r = 12;
+  const xm = niceMax(Math.max(1, ...rows.map(x => x.price))), ym = niceMax(Math.max(1, ...rows.map(x => x.days)));
+  const X = v => l + v / xm * (W - l - r), Y = v => t + H - v / ym * H;
+  const ticks = m => { const n = m % 4 === 0 ? 4 : 5; return Array.from({ length: n + 1 }, (_, i) => m / n * i); };
+  const grid = ticks(ym).map(v => `<line class="grid" x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${l - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join('')
+    + ticks(xm).map(v => `<text x="${X(v)}" y="${t + H + 16}" text-anchor="middle">${shortMoney(v)}</text>`).join('');
+  const order = rows.slice().sort((a, b2) => (cls(a.category) === 'other') ? -1 : (cls(b2.category) === 'other') ? 1 : 0);
+  const dots = order.map(x => {
+    const tp = tip(x.title, `${money(x.price)} · ${x.days} ${say('days to sell', '天卖出')}`, tr(x.category));
+    return `<circle class="dot ${cls(x.category)}" cx="${X(x.price)}" cy="${Y(x.days)}" r="5"/><circle class="hit" cx="${X(x.price)}" cy="${Y(x.days)}" r="12" ${tipAttrs(tp)}/>`;
+  }).join('');
+  const cheap = rows.filter(x => x.price < 3000).map(x => x.days), dear = rows.filter(x => x.price >= 6000).map(x => x.days);
+  const take = cheap.length && dear.length ? say(`Things under $30 sold in about ${Math.round(median(cheap))} days. Things over $60 took about ${Math.round(median(dear))}.`,
+    `30 元以下的东西大约 ${Math.round(median(cheap))} 天卖出，60 元以上的大约 ${Math.round(median(dear))} 天。`) : '';
+  const hasOther = rows.some(x => cls(x.category) === 'other');
+  const svg = `<svg class="chart sc" viewBox="0 0 ${W} ${t + H + b}" role="group" aria-label="${esc(tr('Price and time to sell'))}">${grid}
+    <line class="axis" x1="${l}" x2="${W - r}" y1="${t + H}" y2="${t + H}"/>${dots}
+    <text x="${W - r}" y="${t + H + 30}" text-anchor="end">${esc(tr('Price'))}</text><text x="${l - 34}" y="${t - 14}" text-anchor="start" class="ylab">${esc(tr('Days to sell'))}</text></svg>`;
+  return vizCard(tr('Price and time to sell'), take,
+    legend(top3.map((c2, i) => ['c' + (i + 1), esc(tr(c2))]).concat(hasOther ? [['other', tr('Other')]] : [])) + svg,
+    tbl([tr('Item'), tr('Price'), tr('Days to sell')], rows.slice().sort((a, b2) => b2.days - a.days).map(x => [esc(x.title), money(x.price), x.days])));
+}
+
+// Views to sold: where buyers drop off.
+function funnel(steps) {
+  const max = Math.max(1, steps[0].value);
+  const rows = steps.map((s, i) => {
+    const prev = i ? steps[i - 1].value : 0;
+    const conv = i && prev ? Math.round(s.value / prev * 100) : null;
+    const t = tip(tr(s.step) + ': ' + s.value, conv != null ? say(`${conv}% of the step before`, `上一步的 ${conv}%`) : '');
+    return `<div class="fstep" ${tipAttrs(t)}><span>${esc(tr(s.step))}</span>
+      <div class="ftrack"><i style="width:${Math.max(1.5, s.value / max * 100).toFixed(1)}%"></i></div>
+      <b>${s.value}</b><em>${conv != null ? conv + '%' : ''}</em></div>`;
+  }).join('');
+  const [v, sv, , sold] = steps.map(s => s.value);
+  const drops = steps.slice(1).map((s, i) => ({ from: steps[i].step, to: s.step, rate: steps[i].value ? s.value / steps[i].value : 1 }));
+  const worst = drops.slice().sort((a, b) => a.rate - b.rate)[0];
+  const take = v && sold ? say(`About 1 in ${Math.round(v / sold)} views ends in a sale. The biggest drop is from ${worst.from.toLowerCase()} to ${worst.to.toLowerCase()}.`,
+    `大约每 ${Math.round(v / sold)} 次浏览成交 1 件。流失最多的一步是从“${tr(worst.from)}”到“${tr(worst.to)}”。`) : '';
+  return vizCard(tr('From views to sold'), take, `<div class="funnel"><div class="fstep head"><span></span><span></span><b>${tr('Count')}</b><em>${tr('Kept')}</em></div>${rows}</div>`,
+    tbl([tr('Step'), tr('Count'), tr('Kept')], steps.map((s, i) => [esc(tr(s.step)), s.value, i && steps[i - 1].value ? Math.round(s.value / steps[i - 1].value * 100) + '%' : ''])));
+}
+
+// How long current listings have waited. Click a bar to see the items.
+function stockAgeChart(bands) {
+  const W = 360, H = 130, top = 20, base = top + H, bw = 24, band = W / bands.length;
+  const max = niceMax(Math.max(1, ...bands.map(b => b.count)));
+  const bars = bands.map((b, i) => {
+    const h = b.count ? Math.max(4, b.count / max * H) : 2, x = i * band + (band - bw) / 2;
+    const t = tip(tr(b.label), `${b.count} ${say(b.count === 1 ? 'listing' : 'listings', '件')} · ${money(b.value)}`, say('Click to see them', '点击查看'));
+    return `<rect class="m a${i}${b.count ? '' : ' zero'}" x="${x}" y="${base - h}" width="${bw}" height="${h}" rx="4"/>
+      <rect class="hit${ageOpen === i ? ' on' : ''}" x="${i * band + 4}" y="${top - 16}" width="${band - 8}" height="${H + 36}" data-act="ageBand" data-i="${i}" role="button" aria-pressed="${ageOpen === i}" ${tipAttrs(t)}/>
+      <text class="val" x="${x + bw / 2}" y="${base - h - 6}" text-anchor="middle">${b.count}</text>
+      <text x="${x + bw / 2}" y="${base + 15}" text-anchor="middle">${esc(tr(b.label))}</text>`;
+  }).join('');
+  const old = bands[bands.length - 1];
+  const take = old.count ? say(`${old.count} ${old.count === 1 ? 'listing has' : 'listings have'} waited over 2 months, worth ${money(old.value)}. A lower price or a bundle can move them.`,
+    `有 ${old.count} 件等了两个多月，共 ${money(old.value)}。降价或打包卖能更快卖出。`) : say('Nothing has waited over 2 months.', '没有等超过两个月的商品。');
+  const open = bands[ageOpen];
+  const list = open ? `<div class="agelist"><h3>${esc(tr(open.label))}</h3>${open.items.length ? `<ul>${open.items.map(it => `<li><a href="#/item/${it.id}">${esc(it.title)}</a> · ${money(it.price)} · ${Math.floor((Store.now() - it.listedAt) / DAY)} ${say('days', '天')}
+      <a class="small" href="#/sell/edit/${it.id}">${tr('Edit price')}</a></li>`).join('')}</ul>` : `<p class="muted">${tr('None.')}</p>`}</div>` : `<p class="hint">${tr('Click a bar to see those listings.')}</p>`;
+  const svg = `<svg class="chart age" viewBox="0 0 ${W} ${base + 22}" role="group" aria-label="${esc(tr('How long listings have waited'))}"><line class="axis" x1="0" x2="${W}" y1="${base}" y2="${base}"/>${bars}</svg>`;
+  return vizCard(tr('How long listings have waited'), take, svg + list,
+    tbl([tr('Waiting'), tr('Listings'), tr('Value')], bands.map(b => [esc(tr(b.label)), b.count, money(b.value)])));
+}
+
+// Average cost and price per item, by category: a dumbbell from what you paid to what it sold for.
+function markupChart(rows) {
+  const W = vw(), l = W < 500 ? 96 : 104, r = W < 500 ? 76 : 92, rowH = 30, top = 8;
+  const H = top + rows.length * rowH;
+  const xm = niceMax(Math.max(1, ...rows.map(x => x.price)));
+  const X = v => l + v / xm * (W - l - r);
+  const marks = rows.map((x, i) => {
+    const y = top + i * rowH + rowH / 2, mult = x.cost ? (x.price / x.cost).toFixed(1) : null;
+    const t = tip(tr(x.category), `${say('Paid', '成本')} ${money(x.cost)} → ${say('sold for', '售价')} ${money(x.price)}`,
+      `${say('Profit per item', '每件赚')} ${money(x.price - x.cost)}${mult ? ' · ×' + mult : ''}`, `${x.n} ${say('sold', '件已售')}`);
+    return `<g ${tipAttrs(t)} class="row-hit"><rect class="hit" x="0" y="${y - rowH / 2}" width="${W}" height="${rowH}"/>
+      <text x="${l - 10}" y="${y + 4}" text-anchor="end" class="cat">${esc(tr(x.category))}</text>
+      <line class="bar-l" x1="${X(x.cost)}" x2="${X(x.price)}" y1="${y}" y2="${y}"/>
+      <circle class="cost" cx="${X(x.cost)}" cy="${y}" r="5"/><circle class="price" cx="${X(x.price)}" cy="${y}" r="5"/>
+      <text x="${W - r + 10}" y="${y + 4}" class="val">+${shortMoney(x.price - x.cost)}${mult ? ` ×${mult}` : ''}</text></g>`;
+  }).join('');
+  const best = rows[0];
+  const take = best ? say(`${best.category} earn the most per item: ${money(best.price - best.cost)} over what you paid.`,
+    `${tr(best.category)}每件赚得最多：比成本高 ${money(best.price - best.cost)}。`) : '';
+  const svg = `<svg class="chart db" viewBox="0 0 ${W} ${H + 18}" role="group" aria-label="${esc(tr('What you paid and what it sold for'))}">${marks}
+    <text x="${X(0)}" y="${H + 14}" text-anchor="middle">$0</text><text x="${X(xm)}" y="${H + 14}" text-anchor="middle">${shortMoney(xm)}</text></svg>`;
+  return vizCard(tr('What you paid and what it sold for'), take, legend([['cost', tr('Average cost')], ['c1', tr('Average price')]]) + svg,
+    tbl([tr('Type'), tr('Sold'), tr('Average cost'), tr('Average price'), tr('Profit per item')], rows.map(x => [esc(tr(x.category)), x.n, money(x.cost), money(x.price), money(x.price - x.cost)])), ' wide');
+}
+
+// When handoffs happen: weekday by time of day.
+function meetupGrid(grid) {
+  const max = Math.max(1, ...grid.flat());
+  const lvl = v => v ? Math.min(5, Math.ceil(v / max * 5)) : 0;
+  let best = [0, 0, 0];
+  grid.forEach((row, d) => row.forEach((v, b) => { if (v > best[2]) best = [d, b, v]; }));
+  const head = `<div></div>${TIME_BANDS.map(b => `<b>${esc(tr(b[2]))}</b>`).join('')}`;
+  const body = WEEK_ORDER.map(d => `<span>${esc(dayName(d))}</span>${grid[d].map((v, b) =>
+    `<i class="s${lvl(v)}${lvl(v) >= 4 ? ' hi' : ''}" ${tipAttrs(tip(`${dayName(d, 'long')}, ${tr(TIME_BANDS[b][2]).toLowerCase()}`, `${v} ${say(v === 1 ? 'handoff' : 'handoffs', '次交接')}`))}>${v || ''}</i>`).join('')}`).join('');
+  const take = best[2] ? say(`${dayName(best[0], 'long')} ${TIME_BANDS[best[1]][2].toLowerCase()} is your busiest time. Offer it first when buyers pick a meetup.`,
+    `${dayName(best[0], 'long')}${tr(TIME_BANDS[best[1]][2])}最忙。买家选见面时间时先给这个时段。`) : '';
+  return vizCard(tr('When handoffs happen'), take, `<div class="heat">${head}${body}</div>`,
+    tbl([tr('Day'), ...TIME_BANDS.map(b => esc(tr(b[2])))], WEEK_ORDER.map(d => [esc(dayName(d, 'long')), ...grid[d]])));
+}
+
 function renderDashInsights() {
-  const st = S();
-  const sold = myOrders().filter(o => ['released', 'completed'].includes(o.state));
-  const byCat = {};
-  sold.forEach(o => o.items.forEach(line => {
-    const it = itemById(line.id); const c = it ? it.category : 'Other';
-    byCat[c] = byCat[c] || { revenue: 0, n: 0 };
-    byCat[c].revenue += line.price * line.qty; byCat[c].n += line.qty;
-  }));
-  const cats = Object.entries(byCat).sort((a, b) => b[1].revenue - a[1].revenue);
+  const st = S(), sid = st.actingSeller, now = Store.now();
+  const from = insightDays ? now - insightDays * DAY : 0;
+  const items = st.items, orders = st.orders;
+  const cmp = periodCompare(orders, sid, now, insightDays || 3650);
+  const tts = timeToSell(orders, items, sid, from, now);
+  const prevTts = insightDays ? timeToSell(orders, items, sid, from - insightDays * DAY, from) : [];
+  const ttsMed = median(tts.map(x => x.days)), prevMed = median(prevTts.map(x => x.days));
   const misses = st.misses.slice().sort((a, b) => b.count - a.count).slice(0, 10);
   const watched = interestByItem(st.events || [], myItems().filter(i => i.status === 'active')).slice(0, 5);
-  app.innerHTML = dashHead('insights') + `
-    <div class="cols">
-      <section><h2>Your best categories</h2>
-        ${cats.length ? hbars(cats.map(([c, v]) => ({ label: c, value: v.revenue, text: `${shortMoney(v.revenue)} · ${v.n}` })), shortMoney)
-          + `<p class="hint">${tr('Sales and items sold, after the buyer has it.')}</p>`
-          : '<p class="muted">Shows up after your first sale.</p>'}
-        <h2 style="margin-top:24px">Most watched</h2>
+  const firstSale = Math.min(now, ...orders.filter(o => o.sellerId === sid && o.closedAt).map(o => o.closedAt));
+  const calDays = insightDays || Math.min(182, Math.max(28, Math.ceil((now - firstSale) / DAY) + 1));
+  const kpi = (big, label, d) => `<div class="tile"><b>${big}</b><span>${label}</span>${d}</div>`;
+  const daysDelta = insightDays && prevMed ? (() => { const p = Math.round((ttsMed - prevMed) / prevMed * 100);
+    return `<small class="delta ${p <= 0 ? 'up' : 'down'}">${p <= 0 ? '▼' : '▲'} ${Math.abs(p)}% <span>${p <= 0 ? say('faster', '更快') : say('slower', '更慢')}</span></small>`; })() : '';
+  const hasSales = cmp.current.count > 0;
+  app.innerHTML = dashHead('insights', `<div class="seg" role="group" aria-label="${esc(tr('Date range'))}">${RANGES.map(([d, l]) => `<button type="button" data-act="range" data-days="${d}" aria-pressed="${insightDays === d}">${l}</button>`).join('')}</div>`) + `
+    <div class="tiles">
+      ${kpi(money(cmp.current.sales), tr('Item sales'), deltaTag(cmp.current.sales, cmp.previous.sales))}
+      ${kpi(money(cmp.current.profit), tr('Profit after costs'), deltaTag(cmp.current.profit, cmp.previous.profit))}
+      ${kpi(cmp.current.count, tr('Orders'), deltaTag(cmp.current.count, cmp.previous.count))}
+      ${kpi(tts.length ? Math.round(ttsMed * 10) / 10 + ' ' + say('days', '天') : '–', tr('Typical time to sell'), daysDelta)}
+    </div>
+    ${hasSales ? `<div class="viz-grid">
+      ${waterfall(profitSteps(orders, sid, from, now))}
+      ${funnel(salesFunnel(st.events || [], orders, items, sid, from, now))}
+      ${salesCalendar(calDays)}
+      ${meetupGrid(meetupTimes(orders, sid, from, now))}
+      ${priceScatter(tts)}
+      ${stockAgeChart(stockAge(items, sid, now))}
+      ${markupChart(markupByCategory(orders, items, sid, from, now))}
+    </div>` : `<p class="muted">${tr('No sales in this range yet. Try All time.')}</p>${stockAgeChart(stockAge(items, sid, now))}`}
+    <div class="cols" style="margin-top:28px">
+      <section><h2>Most watched</h2>
         ${watched.length ? hbars(watched.map(r => ({ label: r.item.title, value: r.view + r.save + r.question + r.cart })), String)
           + `<p class="hint">${tr('Views, saves, questions and carts.')}</p>` : '<p class="muted">Nothing yet.</p>'}
       </section>
@@ -989,6 +1279,23 @@ function renderDashInsights() {
       </section>
     </div>`;
 }
+
+// One tooltip for every chart, on hover and on keyboard focus. Text only (textContent), never HTML.
+const tipEl = document.createElement('div');
+tipEl.id = 'tip'; tipEl.setAttribute('role', 'tooltip'); tipEl.hidden = true;
+document.body.appendChild(tipEl);
+function showTip(el, x, y) {
+  tipEl.textContent = el.dataset.tip; tipEl.hidden = false;
+  const r = el.getBoundingClientRect();
+  const px = x != null ? x : r.left + r.width / 2, py = y != null ? y : r.top;
+  const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  tipEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, px - w / 2)) + 'px';
+  tipEl.style.top = (py - h - 12 < 8 ? py + 18 : py - h - 12) + 'px';
+}
+document.addEventListener('pointermove', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e.clientX, e.clientY); else tipEl.hidden = true; });
+document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el) showTip(el); });
+document.addEventListener('focusout', () => { tipEl.hidden = true; });
+addEventListener('scroll', () => { tipEl.hidden = true; }, { passive: true });
 
 // Who is interested in what: open questions first, then every listing people are looking at, with names.
 function renderDashInterest() {
@@ -1073,89 +1380,27 @@ function route() {
   else if (a === 'dashboard') ({ schedule: renderDashSchedule, listings: renderDashListings, interest: renderDashInterest, questions: renderDashInterest,
     money: renderDashMoney, insights: renderDashInsights, profile: renderDashProfile }[b] || renderDashTodo)();
   else app.innerHTML = '<h1>Page not found</h1><p><a href="#/">Back</a></p>';
+  app.classList.toggle('console', a === 'dashboard');
+  if (a === 'dashboard') {
+    const side = app.querySelector('.side'), pane = document.createElement('div');
+    pane.className = 'pane';
+    [...app.childNodes].forEach(n => { if (n !== side) pane.appendChild(n); });
+    app.appendChild(pane);
+  }
   // One view per visit to a listing, not per re-render
   if (a === 'item' && itemById(b) && lastViewed !== b) { track(b, 'view'); remember(b); save(); }
   lastViewed = a === 'item' ? b : null;
   updateCounts();
   translatePage(document.body);
-  if (!a && tourAt < 0 && !S().prefs.tourDone) setTimeout(startTour, 350);
+  if (!a && !S().prefs.tourDone && !Store.inTour()) setTimeout(() => { if (!Store.inTour() && !S().prefs.tourDone) startTour(); }, 350);
 }
 let lastViewed = null;
 
 // ---------- first-visit tour ----------
 
-const TOUR = [
-  ['#hero', 'Welcome to Trove. No fees for buyers or sellers, and your payment is held until you have the item.'],
-  ['#searchForm', 'Search anything. Try “lamp under $30”.'],
-  ['#browseMenu summary', 'Browse by type or price here, or show more per row.'],
-  ['#app .card', 'Tap an item for photos, flaws and questions.'],
-  ['nav.main a.sell', 'Post something for sale: add photos and a price, then share the link.'],
-  ['nav.main a[data-nav=dashboard]', 'Your dashboard: sales, interested buyers and meetups.'],
-  ['#menu summary', 'Your orders, alerts, Wanted posts, settings and 中文 are here.'],
-  [null, "That's it. Happy hunting!"],
-];
-let tourAt = -1;
-const tourNext = (i, dir) => { while (i >= 0 && i < TOUR.length && TOUR[i][0] && !document.querySelector(TOUR[i][0])) i += dir; return i; };
-
-function startTour() {
-  if (tourAt >= 0 || parseHash().parts.length) return;
-  document.getElementById('menu').open = false;
-  tourAt = tourNext(0, 1);
-  showTourStep();
-}
-
-function endTour() {
-  tourAt = -1;
-  document.querySelectorAll('.tour-focus').forEach(el => el.classList.remove('tour-focus'));
-  const box = document.getElementById('tour');
-  if (box) box.remove();
-  if (!S().prefs.tourDone) { S().prefs.tourDone = true; save(); }
-}
-
-function showTourStep() {
-  document.querySelectorAll('.tour-focus').forEach(el => el.classList.remove('tour-focus'));
-  if (tourAt < 0 || tourAt >= TOUR.length) { endTour(); return; }
-  const [sel, text] = TOUR[tourAt];
-  const el = sel && document.querySelector(sel);
-  if (el) { el.classList.add('tour-focus'); el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' }); }
-  else window.scrollTo(0, 0);
-  let box = document.getElementById('tour');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'tour'; box.className = 'tour'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Tour');
-    document.body.appendChild(box);
-  }
-  const last = tourAt === TOUR.length - 1, first = tourNext(tourAt - 1, -1) < 0;
-  box.innerHTML = `<div class="tour-dots" aria-hidden="true">${TOUR.map((x, i) => `<i class="${i === tourAt ? 'on' : ''}"></i>`).join('')}</div>
-    <p class="tour-text">${esc(text)}</p>
-    <div class="row">${last ? '' : '<button type="button" class="ghost small" data-tour="skip">Skip</button>'}
-      <span style="flex:1"></span>
-      ${first ? '' : '<button type="button" class="ghost small" data-tour="back">Back</button>'}
-      <button type="button" class="small" data-tour="next">${last ? 'Done' : 'Next'}</button></div>`;
-  translatePage(box);
-  box.querySelector('[data-tour=next]').focus({ preventScroll: true });
-}
-
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-tour]');
-  if (!b) return;
-  const k = b.dataset.tour;
-  if (k === 'skip') endTour();
-  else if (k === 'back') { const j = tourNext(tourAt - 1, -1); if (j >= 0) { tourAt = j; showTourStep(); } }
-  else { tourAt = tourNext(tourAt + 1, 1); showTourStep(); }
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && tourAt >= 0) endTour(); });
-document.getElementById('tourLink').addEventListener('click', e => {
-  e.preventDefault();
-  S().prefs.heroHidden = false; save();
-  if (parseHash().parts.length || location.hash.includes('?')) location.hash = '#/'; else route();
-  setTimeout(startTour, 350);
-});
-
 let lastPath = null;
 window.addEventListener('hashchange', () => {
   const p = parseHash().parts.join('/');
-  if (tourAt >= 0) endTour();
   route();
   if (p !== lastPath) { window.scrollTo(0, 0); app.focus({ preventScroll: true }); }
   lastPath = p;
@@ -1188,6 +1433,7 @@ document.addEventListener('click', e => {
     // Button colours are drawn for light pages, so picking one on a dark or device-matched page switches to white
     if (lk.dataset.look === 'btn' && ['auto', 'dark', undefined].includes(pr.bg)) pr.bg = 'white';
     save(); applyLook();
+    toast(`${tr(lk.dataset.look === 'bg' ? 'Background' : 'Buttons')}: ${tr((LOOKS[lk.dataset.look].find(x => x[0] === lk.dataset.v) || [])[1] || '')}`);
   }
   const dn = e.target.closest('[data-density]');
   if (dn) { e.preventDefault(); S().prefs.density = S().prefs.density === 'compact' ? 'large' : 'compact'; save(); route(); }
@@ -1235,6 +1481,9 @@ app.addEventListener('click', e => {
       save(); route(); break;
     case 'share': shareLink(btn.dataset.path, btn.dataset.title); break;
     case 'tour': startTour(); break;
+    case 'moneyAll': moneyAll = !moneyAll; route(); break;
+    case 'range': insightDays = +btn.dataset.days; ageOpen = -1; route(); break;
+    case 'ageBand': { const i = +btn.dataset.i; ageOpen = ageOpen === i ? -1 : i; route(); const t = app.querySelector(`[data-act="ageBand"][data-i="${i}"]`); if (t) t.focus(); break; }
     case 'hideHero': st.prefs.heroHidden = true; save(); route(); toast('Hidden. Bring it back from Menu, Take the tour.'); break;
     case 'density': st.prefs.density = st.prefs.density === 'compact' ? 'large' : 'compact'; save(); route(); break;
     case 'jump': { e.preventDefault(); const el = document.getElementById(btn.dataset.to); if (el) el.scrollIntoView({ block: 'start' }); break; }

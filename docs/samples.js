@@ -101,39 +101,111 @@ const SAMPLE_ITEMS = [
 
 const OLD_CATEGORY = { Glass: 'Antiques', Clocks: 'Antiques', Lighting: 'Antiques', 'Folk art': 'Antiques', Paper: 'Collectibles', Textiles: 'Home', Toys: 'Toys and games' };
 
+// Days each sample listing has been up, so the stock-age chart has a spread.
+const LISTED_AGO = [1, 74, 3, 41, 9, 0.5, 23, 96, 2, 16, 35, 62, 5, 12, 4, 1, 8, 2, 20];
+
 function sampleItems(now) {
   return SAMPLE_ITEMS.map((it, i) => ({
     id: 'i' + (101 + i), ...it, sellerId: it.seller || 's1', category: OLD_CATEGORY[it.category] || it.category, qty: 1, status: 'active', photos: [],
     alt: `Line drawing of a ${it.title.toLowerCase()}`, tone: TONES[i % TONES.length],
-    listedAt: now - i * 3600 * 1000 * 7, questions: [],
+    listedAt: now - LISTED_AGO[i % LISTED_AGO.length] * DAY - i * 3600e3, questions: [],
   }));
 }
 
 // Past sales, interest and one upcoming meetup, so the dashboard opens with something to look at.
-// All of it is sample data, made with the real order rules.
-const SAMPLE_PAST = [
-  ['s1', 'Copper kettle', 3500, 900, 'Kitchen', 'pot', 2], ['s1', 'Folding film camera', 6000, 2000, 'Collectibles', 'game', 5],
-  ['s1', 'Floral teacup set', 2400, 600, 'Kitchen', 'dish', 9], ['s1', 'Brass oil lamp', 4000, 1200, 'Antiques', 'lantern', 12],
-  ['s1', 'Postcard lot, 1950s', 1000, 200, 'Collectibles', 'postcard', 16], ['s1', 'Carved bookends', 2800, 700, 'Antiques', 'book', 23],
-  ['s1', 'Pressed glass vase', 1800, 400, 'Antiques', 'bottle', 30], ['s1', 'Tin wind-up bird', 3200, 900, 'Toys and games', 'car', 40],
-  ['s2', 'Desk lamp', 1800, 0, 'Home', 'lantern', 4], ['s2', 'Running shoes, size 9', 3500, 0, 'Sports', 'helmet', 18],
+// All of it is sample data, made with the real order rules. A fixed seed keeps it the same on every load.
+// [title, category, art, low price, high price, cost share]
+const SAMPLE_POOL = [
+  ['Copper kettle', 'Kitchen', 'pot', 2500, 4500, 0.3], ['Floral teacup set', 'Kitchen', 'dish', 1800, 3200, 0.25],
+  ['Enamel bread box', 'Kitchen', 'pot', 2000, 3800, 0.3], ['Wooden rolling pin', 'Kitchen', 'spoon', 600, 1400, 0.2],
+  ['Cast iron skillet', 'Kitchen', 'trivet', 2200, 4000, 0.35], ['Milk glass bowl', 'Kitchen', 'dish', 900, 1800, 0.25],
+  ['Brass oil lamp', 'Antiques', 'lantern', 4000, 9000, 0.3], ['Carved bookends', 'Antiques', 'book', 2500, 4500, 0.25],
+  ['Pressed glass vase', 'Antiques', 'bottle', 1500, 3000, 0.25], ['Pine blanket box', 'Antiques', 'textile', 9000, 18000, 0.35],
+  ['Oak wall clock', 'Antiques', 'clock', 7000, 14000, 0.3], ['Amber apothecary jar', 'Antiques', 'bottle', 1200, 2600, 0.2],
+  ['Postcard lot, 1950s', 'Collectibles', 'postcard', 800, 1600, 0.2], ['Folding film camera', 'Collectibles', 'game', 4500, 8000, 0.35],
+  ['Hockey cards, 1970s', 'Collectibles', 'postcard', 1500, 6000, 0.3], ['Souvenir spoon set', 'Collectibles', 'spoon', 1200, 2500, 0.25],
+  ['Tin wind-up bird', 'Toys and games', 'car', 2500, 4500, 0.3], ['Wooden puzzle box', 'Toys and games', 'game', 1500, 3000, 0.3],
+  ['Quilted throw', 'Home', 'textile', 4000, 7500, 0.3], ['Brass candle snuffer', 'Home', 'candle', 900, 1800, 0.25],
+  ['Poetry hardcover, 1930s', 'Books', 'book', 1200, 3000, 0.2], ['Field guide to birds', 'Books', 'book', 800, 1600, 0.2],
 ];
-const SAMPLE_PEOPLE = ['Wei', 'Priya', 'Tom', 'Mei', 'Jordan', 'Ana'];
+const SAMPLE_PEOPLE = ['Wei', 'Priya', 'Tom', 'Mei', 'Jordan', 'Ana', 'Sofia', 'Ravi', 'Chen', 'Lucas'];
+// Weekends sell more; evenings and Saturday mornings are the usual handoff times.
+const DAY_WEIGHT = [3, 1, 1, 1.2, 1.5, 2, 3.5];
+const HOURS = { 0: [11, 13, 15, 16], 6: [10, 11, 12, 14, 16], weekday: [12, 17, 18, 18, 19, 19, 20, 21] };
+
+function seeded(seed) {
+  let t = seed >>> 0;
+  return () => { t = (t + 0x6D2B79F5) >>> 0; let r = Math.imul(t ^ (t >>> 15), 1 | t); r ^= r + Math.imul(r ^ (r >>> 7), 61 | r); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; };
+}
 
 function sampleHistory(now, items) {
   const out = { items: [], orders: [], events: [] };
+  const rnd = seeded(20261015);
+  const any = arr => arr[Math.floor(rnd() * arr.length)];
   let n = 1;
   const rand = () => ((n++ * 37) % 10) / 10;
-  SAMPLE_PAST.forEach(([sellerId, title, price, cost, category, art, daysAgo], i) => {
-    const at = now - daysAgo * DAY;
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  // Choose sale days over the last 84 days, more on weekends and a little more recently.
+  const sales = [];
+  for (let d = 1; d <= 84; d++) {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - d);
+    const chance = 0.24 * DAY_WEIGHT[day.getDay()] * (1.25 - d / 168);
+    let k = chance > 1 ? 1 : 0;
+    if (rnd() < chance % 1 || (chance > 1 && rnd() < chance - 1)) k++;
+    for (let j = 0; j < k; j++) sales.push(day);
+  }
+  sales.forEach((day, i) => {
+    const wd = day.getDay();
+    const hour = any(HOURS[wd] || HOURS.weekday);
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, any([0, 15, 30, 45])).getTime();
+    const sellerId = i % 9 === 4 ? 's2' : 's1';
+    let title, category, art, price, cost;
+    if (sellerId === 's2') {
+      [title, category, art, price] = any([['Desk lamp', 'Home', 'lantern', 1800], ['Running shoes, size 9', 'Sports', 'helmet', 3500],
+        ['Bluetooth speaker', 'Electronics', 'headphones', 2500], ['Rain jacket', 'Clothing', 'jacket', 2800]]);
+      cost = 0;
+    } else {
+      const [t, c, a, lo, hi, share] = any(SAMPLE_POOL);
+      title = t; category = c; art = a;
+      price = Math.round((lo + rnd() * (hi - lo)) / 100) * 100;
+      cost = Math.round(price * share * (0.7 + rnd() * 0.6) / 50) * 50;
+    }
+    // Pricier things take longer to sell, with plenty of spread.
+    const wait = Math.max(0.5, Math.round((1 + price / 900 + rnd() * rnd() * 30) * 10) / 10);
+    const ships = sellerId === 's1' && i % 4 === 1;
     const it = { id: 'h' + (i + 1), sellerId, title, price, cost, category, art, tone: TONES[i % TONES.length], condition: 'good', size: 'small',
       flaws: 'See photos.', measurements: '', qty: 0, status: 'sold', soldAt: at, soldPrice: price, photos: [], alt: 'Line drawing of a ' + title.toLowerCase(),
-      listedAt: at - 5 * DAY, questions: [], meetup: true, ships: true };
+      listedAt: at - wait * DAY, questions: [], meetup: true, ships: true };
     out.items.push(it);
-    let o = createOrder({ id: 'P-' + (101 + i), sellerId, items: [it], buyer: { name: SAMPLE_PEOPLE[i % SAMPLE_PEOPLE.length] }, fulfilment: 'meetup',
-      payment: i % 2 ? 'online' : 'at_handoff', meetup: { place: MEET_DEFAULT, at }, now: at - DAY, rand, checkMinimum: false });
-    o = transition(o, 'handoff', 'seller', at, { code: o.handoffCode });
+    const buyer = { name: SAMPLE_PEOPLE[i % SAMPLE_PEOPLE.length] };
+    let o;
+    if (ships) {
+      o = createOrder({ id: 'P-' + (101 + i), sellerId, items: [it], buyer, fulfilment: 'ship', payment: 'online',
+        address: { line1: '12 Sample St', city: 'Ottawa', province: 'ON', postal: 'K1A 0A1' }, now: at - 4 * DAY, rand, checkMinimum: false });
+      o = transition(o, 'ship', 'seller', at - 3 * DAY, { tracking: 'SAMPLE' + (1000 + i), labelCost: 1200 + Math.round(rnd() * 600) });
+      o = transition(o, 'delivered_scan', 'carrier', at - DAY);
+      o = transition(o, 'confirm', 'buyer', at);
+    } else {
+      o = createOrder({ id: 'P-' + (101 + i), sellerId, items: [it], buyer, fulfilment: 'meetup',
+        payment: i % 3 ? 'at_handoff' : 'online', meetup: { place: MEET_DEFAULT, at }, now: at - DAY, rand, checkMinimum: false });
+      o = transition(o, 'handoff', 'seller', at, { code: o.handoffCode });
+    }
     out.orders.push(o);
+    // the interest that led to the sale
+    const span = at - it.listedAt;
+    const views = 3 + Math.floor(rnd() * 14 + span / DAY / 3);
+    for (let v = 0; v < views; v++) out.events.push({ itemId: it.id, kind: 'view', who: 'guest', at: it.listedAt + rnd() * span });
+    const saves = Math.floor(rnd() * 3.5);
+    for (let v = 0; v < saves; v++) out.events.push({ itemId: it.id, kind: rnd() < 0.3 ? 'question' : 'save', who: any(SAMPLE_PEOPLE), at: it.listedAt + rnd() * span });
+    out.events.push({ itemId: it.id, kind: 'cart', who: buyer.name, at: at - rnd() * DAY });
+  });
+  // People who looked and saved but did not buy, spread over the same weeks.
+  items.filter(i => i.sellerId === 's1').forEach(it => {
+    const span = now - it.listedAt;
+    const views = Math.floor(rnd() * 10 + span / DAY / 4);
+    for (let v = 0; v < views; v++) out.events.push({ itemId: it.id, kind: 'view', who: 'guest', at: it.listedAt + rnd() * span });
+    if (rnd() < 0.5) out.events.push({ itemId: it.id, kind: 'save', who: any(SAMPLE_PEOPLE), at: it.listedAt + rnd() * span });
+    if (rnd() < 0.15) out.events.push({ itemId: it.id, kind: 'cart', who: any(SAMPLE_PEOPLE), at: it.listedAt + rnd() * span });
   });
   // interest in things still for sale
   const pick = id => items.find(x => x.id === id);

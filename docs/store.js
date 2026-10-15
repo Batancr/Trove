@@ -3,8 +3,9 @@
 // so app.js only ever calls Store.* and never touches storage directly.
 
 const Store = (() => {
-  const KEY = 'trove.v3';
+  const KEY = 'trove.v4';
   let state = null;
+  let setAside = null;   // the visitor's own data while the tour runs on example data
 
   function fresh() {
     const now = Date.now();
@@ -30,6 +31,7 @@ const Store = (() => {
   }
 
   function save() {
+    if (setAside) return true;   // the tour never writes example data over the visitor's own
     try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
     catch (e) { return false; }   // full or blocked: the page keeps working for this visit
   }
@@ -38,6 +40,16 @@ const Store = (() => {
     get: () => state || load(),
     save,
     reset() { state = fresh(); save(); },
+    // Tour: put the visitor's data aside in memory, switch saving off and load example data. tourEnd puts it all back.
+    tourBegin(prepare) {
+      if (setAside) return;
+      setAside = state || load();
+      const ex = fresh();
+      prepare(ex, setAside);
+      state = ex;
+    },
+    tourEnd() { if (!setAside) return; state = setAside; setAside = null; },
+    inTour: () => !!setAside,
     now: () => Date.now() + (state ? state.clockDays : 0) * 86400000,
     nextOrderId() { const id = 'T-' + state.seq++; return id; },
   };
