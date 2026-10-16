@@ -151,14 +151,14 @@ const icon = (k, size = 30) => `<svg viewBox="0 0 32 32" width="${size}" height=
 // ---------- colour drafts ----------
 
 const LOOKS = {
-  bg: [['auto', 'Default', 'linear-gradient(135deg,#fff0e2 50%,#15171a 50%)'], ['white', 'White', '#ffffff'], ['cream', 'Cream', '#fdf5e8'], ['blue', 'Light blue', '#eaf3fc'], ['peach', 'Light peach', '#fff0e2'], ['dark', 'Dark', '#15171a']],
+  bg: [['peach', 'Light peach', '#fff0e2'], ['white', 'White', '#ffffff'], ['cream', 'Cream', '#fdf5e8'], ['blue', 'Light blue', '#eaf3fc'], ['dark', 'Dark', '#15171a'], ['auto', 'Match device', 'linear-gradient(135deg,#fff0e2 50%,#15171a 50%)']],
   btn: [['orange', 'Creamy orange', '#ffcb98'], ['cream', 'Light cream', '#ffe6cc'], ['navy', 'Navy', '#2f5f8a'], ['ink', 'Charcoal', '#1f2328'], ['sage', 'Sage', '#cfe3d4']],
 };
 function applyLook() {
   const pr = S().prefs, el = document.documentElement;
   // A light colour choice forces the light theme so it shows even when the device is in dark mode
-  const bg = pr.bg || 'auto';
-  // Default: light peach, or dark on devices set to dark mode
+  // Default for every first visit: light peach with creamy orange buttons, even on devices set to dark mode
+  const bg = pr.bg || 'peach';
   el.dataset.bg = bg === 'auto' ? 'peach' : bg; el.dataset.btn = pr.btn || 'orange';
   if (bg === 'auto') delete el.dataset.theme; else el.dataset.theme = bg === 'dark' ? 'dark' : 'light';
   const pop = document.getElementById('lookPop');
@@ -249,7 +249,6 @@ function moneyBar(o) {
 }
 
 function itemCard(it) {
-  if (isDigital(it)) return digitalCard(it);
   return `<a class="card" href="#/item/${it.id}">
     <div class="ph">${photo(it)}</div>
     <h3>${esc(it.title)}</h3>
@@ -259,18 +258,6 @@ function itemCard(it) {
 }
 
 // ---------- buyer pages ----------
-
-// The two halves of Trove point at each other: a Digital shelf on the home page, and digital matches on searches.
-function digitalShelf() {
-  const list = S().items.filter(i => isDigital(i) && i.status === 'active').sort((a, b) => b.listedAt - a.listedAt).slice(0, 4);
-  if (!list.length) return '';
-  return `<section class="shelf dshelf"><div class="shelf-head"><h2 class="sub"><span class="dtag">${tr('New')}</span> Trove Digital</h2>
-    <a href="#/digital"><span>${tr('Lessons, advice and downloads')}</span> →</a></div><div class="grid">${list.map(digitalCard).join('')}</div></section>`;
-}
-function digitalHint(q) {
-  const n = search(S().items, q, { digital: true }).results.length;
-  return n ? `<p class="notice ok"><a href="#/digital?q=${encodeURIComponent(q)}"><span>${n}</span> <span>${tr(n === 1 ? 'match on Trove Digital' : 'matches on Trove Digital')}</span> →</a></p>` : '';
-}
 
 const PRICES = [['u10', 'Under $10', null, 999], ['10-50', '$10 to $50', 1000, 4999], ['50-100', '$50 to $100', 5000, 9999], ['100+', '$100 and up', 10000, null]];
 
@@ -339,7 +326,7 @@ function renderBrowse(params) {
   if (filters.decade) understood.push(`${filters.decade}s`);
   const opt = (v, label) => `<option value="${v}" ${v === (p.sort || '') ? 'selected' : ''}>${label}</option>`;
   const grid = list => `<div class="grid${compact ? ' compact' : ''}">${list.map(itemCard).join('')}</div>`;
-  const recent = home ? (st.recent || []).map(itemById).filter(it => it && it.status === 'active').slice(0, 8) : [];
+  const recent = home ? (st.recent || []).map(itemById).filter(it => it && it.status === 'active' && !isDigital(it)).slice(0, 8) : [];
   // On the home page, everything is shown grouped by type so a whole shop can be scanned at once
   const sections = home ? groupByCategory(results, CATEGORIES) : null;
 
@@ -357,7 +344,6 @@ function renderBrowse(params) {
       <label class="sr" for="sort">Sort</label>
       <select id="sort" name="sort">${opt('', q ? 'Best match' : 'Newest')}${opt('low', 'Lowest price')}${opt('high', 'Highest price')}</select>
     </form>`}
-    ${home ? digitalShelf() : q ? digitalHint(q) : ''}
     ${recent.length ? `<h2 class="sub">Recently viewed</h2><div class="strip">${recent.map(it => `<a href="#/item/${it.id}"><span class="ph">${photo(it)}</span><b>${money(it.price)}</b></a>`).join('')}</div>` : ''}
     ${sections && results.length ? sections.map(g => `<section class="shelf"><div class="shelf-head"><h2 class="sub">${esc(g.category)}</h2>
         <a href="${link({ cat: g.category })}"><span>${tr('See all')}</span> ${g.items.length}</a></div>
@@ -375,7 +361,7 @@ function renderItem(id) {
   if (isDigital(it)) { renderDigitalItem(it); return; }
   const st = S();
   const seller = sellerById(it.sellerId);
-  const stats = sellerStats(st.orders, seller.id);
+  const stats = sellerStats(mainOrders(), seller.id);
   const inCart = st.cart.some(c => c.id === id);
   const fav = st.favs.includes(id);
   const qa = it.questions || [];
@@ -404,7 +390,7 @@ function renderItem(id) {
           ${it.material ? `<dt>Material</dt><dd>${esc(it.material)}</dd>` : ''}
           ${it.maker ? `<dt>Details</dt><dd>${esc(it.maker)}</dd>` : ''}
         </dl>
-        <a class="seller" href="#/seller/${seller.id}">${avatar(seller)}
+        <a class="seller" href="#/digital?seller=${seller.id}">${avatar(seller)}
           <span><b>${esc(seller.name)}</b><br><span class="muted">${esc(seller.city)} · ${stats.sales ? `${stats.sales} <span>${tr(stats.sales > 1 ? 'sales' : 'sale')}</span>` : `<span>${tr('New seller')}</span>`}</span></span></a>
         <h2>Questions</h2>
         ${qa.map(x => `<p><b>${esc(x.q)}</b><br>${x.a ? esc(x.a) : `<span class="muted">${tr('Waiting for an answer.')}</span>`}</p>`).join('')}
@@ -434,14 +420,16 @@ function digitalCard(it) {
 
 function renderDigital(params) {
   const st = S();
-  const q = params.q || '', cat = params.cat || '';
+  const q = params.q || '', cat = params.cat || '', sellerF = params.seller || '';
   const extra = { digital: true };
   if (cat) extra.category = cat;
-  const { results } = search(st.items, q, extra, q ? 'best' : 'newest');
-  const home = !q && !cat;
+  let { results } = search(st.items, q, extra, q ? 'best' : 'newest');
+  if (sellerF) results = results.filter(i => i.sellerId === sellerF);
+  const home = !q && !cat && !sellerF;
+  const sellerName = sellerF ? (sellerById(sellerF) || {}).name : '';
   const compact = st.prefs.density === 'compact';
   const grid = list => `<div class="grid${compact ? ' compact' : ''}">${list.map(digitalCard).join('')}</div>`;
-  app.innerHTML = `
+  app.innerHTML = digitalNav('browse') + `
     <section class="dhero">
       <div><p class="eyebrow">Trove Digital</p>
         <h1>Lessons, advice, downloads and game items.</h1>
@@ -455,10 +443,70 @@ function renderDigital(params) {
       <div><b>${tr('Downloads')}</b><span>${tr('Delivered after you pay, with 2 days to check it.')}</span></div>
       <div><b>${tr('Game items')}</b><span>${tr('Traded in the game. Only for games whose rules allow it.')}</span></div></div>` : ''}
     ${q ? `<p class="muted"><span>${results.length}</span> <span>${tr('results for')}</span> “${esc(q)}”</p>` : ''}
+    ${sellerName ? `<h2 class="sub">${esc(sellerName)}</h2>` : ''}
     ${results.length ? (home ? `<section class="shelf"><div class="shelf-head"><h2 class="sub">${tr('Newest')}</h2></div>${grid(results)}</section>` : grid(results))
       : `<div class="panel" style="max-width:520px"><h2>Nothing yet</h2><p>Try another word, or browse all of Trove Digital.</p><a class="btn" href="#/digital">See everything</a></div>`}
     <section class="panel dsell"><div><h2>Sell what you know</h2><p class="muted">Lessons, appraisals, guides and game items go on the same shop and dashboard as everything else you sell.</p></div>
-      <a class="btn" href="#/sell/new?kind=session">List a service</a></section>`;
+      <a class="btn" href="#/digital/selling">Start selling</a></section>`;
+}
+
+// Trove Digital's own sub-tabs: browse, what you bought, what you sell.
+function digitalNav(cur) {
+  const t = (id, href, label) => `<a href="${href}" ${cur === id ? 'aria-current="true"' : ''}>${label}</a>`;
+  return `<nav class="dnav" aria-label="Trove Digital">${t('browse', '#/digital', 'Browse')}${t('orders', '#/digital/orders', 'My purchases')}${t('selling', '#/digital/selling', 'Selling')}</nav>`;
+}
+const digitalOrders = () => S().orders.filter(o => o.digital);
+const digitalAlerts = to => S().inbox.filter(n => n.to === to && isDigitalAlert(n));
+
+function renderDigitalOrders() {
+  const st = S();
+  const mine = digitalOrders().filter(o => o.id.startsWith('T-'));   // orders placed in this browser; the rest are example sales
+  const alerts = digitalAlerts('buyer').slice(0, 8);
+  app.innerHTML = digitalNav('orders') + `<h1>My purchases</h1>
+    ${mine.length ? `<div class="tablewrap"><table><thead><tr><th>Order</th><th>What</th><th>Status</th><th class="num">Total</th></tr></thead>
+      <tbody>${mine.map(o => `<tr><td><a href="#/order/${o.id}">${esc(o.id)}</a><br><span class="muted">${fmtDate(o.createdAt, false)}</span></td>
+        <td>${o.items.map(i => esc(i.title)).join('<br>')}<br><span class="chip">${esc(tr(DIGITAL_KINDS[o.digital.kind].label))}</span>${o.digital.kind === 'session' ? ` <span class="muted">${esc(fmtDate(o.digital.at))}</span>` : ''}</td>
+        <td>${esc(STATES[o.state].label)}</td><td class="num">${money(o.total)}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="panel" style="max-width:520px"><p>Nothing bought on Trove Digital yet.</p><a class="btn" href="#/digital">Browse</a></div>`}
+    ${alerts.length ? `<h2 style="margin-top:28px">Alerts</h2><ul class="timeline">${alerts.map(n => `<li><time>${fmtDate(n.at)}</time><span>${esc(tr(n.text))}</span> <a href="#/order/${n.orderId}">View</a></li>`).join('')}</ul>` : ''}`;
+  alerts.forEach(n => { n.read = true; }); save();
+}
+
+function renderDigitalSelling() {
+  const st = S();
+  const sellers = st.sellers.filter(s => st.items.some(i => i.sellerId === s.id && isDigital(i)));
+  if (!sellers.some(s => s.id === st.digitalSeller)) st.digitalSeller = (sellers[0] || st.sellers[0]).id;
+  const sid = st.digitalSeller, me = sellerById(sid);
+  const orders = digitalOrders().filter(o => o.sellerId === sid);
+  const items = st.items.filter(i => i.sellerId === sid && isDigital(i)).sort((a, b) => b.listedAt - a.listedAt);
+  const open = orders.filter(o => ['paid_held', 'problem', 'delivered'].includes(o.state))
+    .sort((a, b) => (b.state === 'problem') - (a.state === 'problem') || (a.digital.at || a.shipBy) - (b.digital.at || b.shipBy));
+  const done = orders.filter(o => o.closedAt);
+  const sum = list => list.reduce((s, o) => s + o.subtotal, 0);
+  const qs = [];
+  items.forEach(it => (it.questions || []).forEach((q, i) => { if (!q.a) qs.push({ it, q, i }); }));
+  const status = { active: 'For sale', hidden: 'Hidden', sold: 'Sold' };
+  app.innerHTML = digitalNav('selling') + `
+    <div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:6px">
+      <div><h1 style="margin:0">Selling on Trove Digital</h1>
+        <label class="muted" style="font-size:.9rem">Demo, viewing as <select data-act-change="dseller" aria-label="Seller">${sellers.map(s => `<option value="${s.id}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label></div>
+      <a class="btn" href="#/sell/new?kind=session">+ <span>New listing</span></a></div>
+    <div class="tiles" style="margin-top:16px">
+      <div class="tile"><span>${tr('Earned')}</span><b>${money(sum(done))}</b></div>
+      <div class="tile"><span>${tr('Held for you')}</span><b>${money(sum(open))}</b></div>
+      <div class="tile"><span>${tr('Sales')}</span><b>${done.length}</b></div>
+      <div class="tile"><span>${tr('Listings')}</span><b>${items.filter(i => i.status === 'active').length}</b></div>
+    </div>
+    <div class="sechead"><h2>To do</h2><span class="muted">${open.length} ${tr(open.length === 1 ? 'order' : 'orders')}</span></div>
+    ${open.length ? open.map(todoCard).join('') : '<p class="muted">Nothing to do.</p>'}
+    ${qs.length ? `<h2>Questions</h2>${qs.map(({ it, q, i }) => `<div class="todo"><header><a href="#/item/${it.id}">${esc(it.title)}</a><span class="chip orange">${tr('Needs an answer')}</span></header>
+      <p><b>${esc(q.q)}</b></p><form data-form="answer" data-id="${it.id}" data-i="${i}" class="row"><input name="a" required style="flex:1;min-width:180px" aria-label="Your answer"><button type="submit">Answer</button></form></div>`).join('')}` : ''}
+    <h2>Listings</h2>
+    ${items.length ? `<div class="tablewrap"><table><tbody>${items.map(it => `<tr><td><a href="#/item/${it.id}">${esc(it.title)}</a><br><span class="muted">${esc(kindLabel(it))}</span></td>
+      <td class="num">${money(it.price)}</td><td>${esc(tr(status[it.status] || it.status))}</td>
+      <td class="num"><a href="#/sell/edit/${it.id}">Edit</a>${it.status === 'active' ? ` <button type="button" class="ghost small" data-act="hide" data-id="${it.id}">Hide</button>` : it.status === 'hidden' ? ` <button type="button" class="ghost small" data-act="unhide" data-id="${it.id}">Show</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">No listings yet.</p>'}`;
+  digitalAlerts('seller').forEach(n => { if (n.sellerId === sid) n.read = true; }); save();
 }
 
 // Session times grouped by day, as radio buttons.
@@ -477,10 +525,10 @@ function slotPicker(it) {
 function renderDigitalItem(it) {
   const st = S();
   const seller = sellerById(it.sellerId);
-  const stats = sellerStats(st.orders, seller.id);
+  const stats = sellerStats(digitalOrders(), seller.id);
   const qa = it.questions || [];
   const who = st.me;
-  const others = st.items.filter(x => x.sellerId === seller.id && x.id !== it.id && x.status === 'active').slice(0, 4);
+  const others = st.items.filter(x => x.sellerId === seller.id && x.id !== it.id && x.status === 'active' && isDigital(x)).slice(0, 4);
   const promise = { session: "Paid now, held until the session is over. If it doesn't happen, you get it back.",
     download: 'Paid now, held for 2 days after delivery so you can check it.',
     ingame: 'Paid now, held until you confirm the item arrived in your game.' }[it.digital];
@@ -515,7 +563,7 @@ function renderDigitalItem(it) {
       </div>
     </div>
     ${others.length ? `<h2 class="sub" style="margin-top:28px"><span>${tr('More from')}</span> ${esc(seller.name)}</h2>
-      <div class="grid">${others.map(x => isDigital(x) ? digitalCard(x) : itemCard(x)).join('')}</div>` : ''}`;
+      <div class="grid">${others.map(digitalCard).join('')}</div>` : ''}`;
 }
 
 function buyDigital(form) {
@@ -581,8 +629,8 @@ function digitalTodo(o) {
 function renderSeller(id) {
   const st = S();
   const seller = sellerById(id);
-  const stats = sellerStats(st.orders, id);
-  const items = st.items.filter(i => i.sellerId === id);
+  const stats = sellerStats(mainOrders(), id);
+  const items = mainItems().filter(i => i.sellerId === id);
   const live = items.filter(i => i.status === 'active');
   const sold = items.filter(i => i.status === 'sold');
   const groups = groupByCategory(live.sort((a, b) => b.listedAt - a.listedAt), CATEGORIES);
@@ -733,7 +781,7 @@ function renderOrder(id) {
   const can = a => canDo(o, a, 'buyer');
   const seller = sellerById(o.sellerId);
   const when = o.meetup && o.meetup.at ? ', ' + fmtDate(o.meetup.at) : '';
-  app.innerHTML = `
+  app.innerHTML = `${o.digital ? digitalNav('orders') : ''}
     <h1><span>${tr('Order')}</span> ${esc(o.id)}</h1>
     <p><span class="chip ${o.state === 'problem' ? 'red' : ''}">${esc(STATES[o.state].label)}</span>
       ${o.shipBy && o.state === 'paid_held' && !o.digital ? `<span class="muted"><span>${tr('Ships by')}</span> ${fmtDate(o.shipBy)}<span>${tr(", or you're refunded.")}</span></span>` : ''}
@@ -770,7 +818,7 @@ function renderOrder(id) {
 }
 
 function renderOrders() {
-  const orders = S().orders;
+  const orders = mainOrders();
   app.innerHTML = `<h1>My orders</h1>${orders.length ? `<div class="tablewrap"><table>
     <thead><tr><th>Order</th><th>Items</th><th>Status</th><th class="num">Total</th></tr></thead>
     <tbody>${orders.map(o => `<tr><td><a href="#/order/${o.id}">${esc(o.id)}</a><br><span class="muted">${fmtDate(o.createdAt, false)}</span></td>
@@ -778,11 +826,14 @@ function renderOrders() {
     : '<p>No orders yet.</p>'}`;
 }
 
+const isDigitalAlert = n => { const o = n.orderId && orderById(n.orderId); return !!(o && o.digital) || !!(n.itemId && isDigital(itemById(n.itemId) || {})); };
+const mainInbox = () => S().inbox.filter(n => !isDigitalAlert(n));
+
 function renderInbox() {
-  const st = S();
+  const st = S(), list = mainInbox();
   app.innerHTML = `<h1>Alerts</h1>
-    ${st.inbox.length ? `<ul class="timeline">${st.inbox.map(n => `<li><time>${fmtDate(n.at)} · ${tr(n.to === 'seller' ? 'as seller' : 'as buyer')}${n.read ? '' : ` · <b>${tr('new')}</b>`}</time><span>${esc(tr(n.text))}</span> <a href="#/${n.itemId ? 'item/' + n.itemId : n.to === 'seller' ? (n.orderId ? 'dashboard/todo' : 'dashboard/interest') : 'order/' + n.orderId}">View</a></li>`).join('')}</ul>` : '<p class="muted">No alerts yet.</p>'}`;
-  st.inbox.forEach(n => { n.read = true; }); save(); updateCounts();
+    ${list.length ? `<ul class="timeline">${list.map(n => `<li><time>${fmtDate(n.at)} · ${tr(n.to === 'seller' ? 'as seller' : 'as buyer')}${n.read ? '' : ` · <b>${tr('new')}</b>`}</time><span>${esc(tr(n.text))}</span> <a href="#/${n.itemId ? 'item/' + n.itemId : n.to === 'seller' ? (n.orderId ? 'dashboard/todo' : 'dashboard/interest') : 'order/' + n.orderId}">View</a></li>`).join('')}</ul>` : '<p class="muted">No alerts yet.</p>'}`;
+  list.forEach(n => { n.read = true; }); save(); updateCounts();
 }
 
 function renderWanted(p) {
@@ -871,38 +922,39 @@ const SIDE_ICONS = {
   interest: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
   money: '<path d="M8 1.5v13M11 4.2H6.6a2 2 0 000 4h2.8a2 2 0 010 4H4.8"/>',
   insights: '<path d="M2 13.5h12M4.5 11V8M8 11V4M11.5 11V6.5"/>',
+  pulse: '<path d="M1.5 8.5h3l1.8-4.5 3.2 9 1.8-4.5h3.2"/>',
   profile: '<path d="M2.5 6.5L3.6 2.5h8.8l1.1 4M3.2 6.5v7h9.6v-7M2.5 6.5h11M6.5 13.5v-4h3v4"/>',
   shop: '<path d="M6.5 3H3v10h10V9.5M9.5 2.5h4v4M13.5 2.5L7.5 8.5"/>',
 };
 const sideIcon = k => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SIDE_ICONS[k]}</svg>`;
 const DASH_PAGES = {
-  todo: ['Overview', 'What needs doing, and how the last 30 days went.'],
+  todo: ['Overview', 'What needs doing, and how the shop is doing.'],
   schedule: ['Schedule', 'Meetups and ship-by dates for the next two weeks.'],
   listings: ['Listings', 'Everything you have for sale, plus drafts.'],
   interest: ['Interest', 'Questions to answer, and who is watching what.'],
   money: ['Money', 'What you earned, what is on the way, and what each sale cost.'],
   insights: ['Insights', 'What sells, when, and where buyers drop off.'],
+  pulse: ['Pulse', 'Your shop at a glance, live. Switch the range or what the charts show.'],
   profile: ['Profile', 'How your shop looks to buyers.'],
 };
 
 function dashHead(cur, actions = '') {
   const st = S(), sid = st.actingSeller;
   const me = st.sellers.find(s => s.id === sid) || st.sellers[0];
-  const mine = st.orders.filter(o => o.sellerId === sid);
+  const mine = myOrders();
   const n = mine.filter(o => ['paid_held', 'reserved', 'problem'].includes(o.state)).length;
   const unanswered = unansweredCount();
-  const meets = scheduleByDay(st.orders, sid, Store.now()).reduce((s, d) => s + d.orders.length, 0)
-    + mine.filter(o => o.state === 'paid_held' && o.digital && o.digital.at && o.digital.at >= Store.now() - DAY).length;
-  const drafts = st.items.filter(i => i.sellerId === sid && i.status === 'draft').length;
+  const meets = scheduleByDay(mainOrders(), sid, Store.now()).reduce((s, d) => s + d.orders.length, 0);
+  const drafts = myItems().filter(i => i.status === 'draft').length;
   const link = (id, c) => `<a href="#/dashboard/${id}" ${cur === id ? 'aria-current="page"' : ''}>${sideIcon(id)}<span>${DASH_PAGES[id][0]}</span>${c ? `<span class="count">${c}</span>` : ''}</a>`;
   const [title, desc] = DASH_PAGES[cur];
   return `<aside class="side" aria-label="Dashboard">
       <label class="proj"><span class="av" aria-hidden="true">${esc((me.name || '?')[0])}</span>
-        <span class="pname"><small>Demo, viewing as</small><select data-act-change="seller" aria-label="Seller">${st.sellers.map(s => `<option value="${s.id}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></span></label>
+        <span class="pname"><small>Demo, viewing as</small><select data-act-change="seller" aria-label="Seller">${mainSellers().map(s => `<option value="${s.id}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></span></label>
       <a class="btn newbtn" href="#/sell">+ <span>New listing</span></a>
       <nav aria-label="Dashboard sections">
         <h6>Selling</h6>${link('todo', n)}${link('schedule', meets)}${link('listings', drafts)}${link('interest', unanswered)}
-        <h6>Analytics</h6>${link('money')}${link('insights')}
+        <h6>Analytics</h6>${link('money')}${link('insights')}${link('pulse')}
         <h6>Shop</h6>${link('profile')}<a href="#/seller/${sid}">${sideIcon('shop')}<span>View your shop</span></a>
       </nav>
     </aside>
@@ -916,7 +968,7 @@ function recentActivity() {
   if (!done.length) return '';
   return `<div class="sechead"><h2>${tr('Recent sales')}</h2><a href="#/dashboard/money">${tr('See all')}</a></div>
     <div class="tablewrap activity"><table><tbody>${done.map(o => { const p = payoutFor(o); return `<tr><td class="muted">${esc(shortDate(o.closedAt))}</td>
-      <td>${o.items.map(i => esc(i.title)).join(', ')}</td><td><span class="chip">${esc(tr(o.digital ? DIGITAL_KINDS[o.digital.kind].label : o.fulfilment === 'ship' ? 'Shipped' : 'Meetup'))}</span></td>
+      <td>${o.items.map(i => esc(i.title)).join(', ')}</td><td><span class="chip">${esc(tr(o.fulfilment === 'ship' ? 'Shipped' : 'Meetup'))}</span></td>
       <td class="num">${money(o.subtotal)}</td><td class="num muted">+${money(p.profit)} ${tr('profit')}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 
@@ -934,8 +986,12 @@ function spark(values, label, bars = false) {
     <path class="area" d="${line}L${W} ${H}L0 ${H}Z"/><path class="ln" d="${line}"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5"/></svg>`;
 }
 
-const myOrders = () => S().orders.filter(o => o.sellerId === S().actingSeller);
-const myItems = () => S().items.filter(i => i.sellerId === S().actingSeller);
+// Trove Digital is its own tab: the main site and dashboard only ever see physical items and their orders.
+const mainOrders = () => S().orders.filter(o => !o.digital);
+const mainItems = () => S().items.filter(i => !isDigital(i));
+const myOrders = () => mainOrders().filter(o => o.sellerId === S().actingSeller);
+const myItems = () => mainItems().filter(i => i.sellerId === S().actingSeller);
+const mainSellers = () => S().sellers.filter(s => S().items.some(i => i.sellerId === s.id && !isDigital(i)));
 const unansweredCount = () => myItems().reduce((s, i) => s + (i.questions || []).filter(q => !q.a).length, 0);
 const dayKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const timeOnly = ms => new Date(ms).toLocaleTimeString(lang() === 'zh' ? 'zh-CN' : 'en-CA', { hour: 'numeric', minute: '2-digit' });
@@ -989,19 +1045,27 @@ function renderDashTodo() {
   const open = myOrders().filter(o => ['paid_held', 'reserved', 'problem', 'shipped', 'delivered'].includes(o.state))
     .sort((a, b) => (b.state === 'problem') - (a.state === 'problem') || deadline(a) - deadline(b));
   const st = S(), now = Store.now();
-  const week = weeklySales(st.orders, st.actingSeller, now, 1)[0];
-  const next = scheduleByDay(st.orders, st.actingSeller, now).flatMap(d => d.orders).find(o => o.meetup.at >= now);
+  const week = weeklySales(mainOrders(), st.actingSeller, now, 1)[0];
+  const next = scheduleByDay(mainOrders(), st.actingSeller, now).flatMap(d => d.orders).find(o => o.meetup.at >= now);
   const watching = interestByItem(st.events || [], myItems().filter(i => i.status === 'active')).reduce((s, r) => s + r.save + r.cart, 0);
-  const days = salesByDay(st.orders, st.actingSeller, now, 30);
+  const N = overviewDays;
+  const both = salesByDay(mainOrders(), st.actingSeller, now, N * 2);
+  const days = both.slice(N), before = both.slice(0, N);
   const mineIds = new Set(myItems().map(i => i.id));
-  const views = days.map(d => (st.events || []).filter(e => e.kind === 'view' && mineIds.has(e.itemId) && e.at >= d.start && e.at < d.end).length);
+  const viewsIn = list => list.map(d => (st.events || []).filter(e => e.kind === 'view' && mineIds.has(e.itemId) && e.at >= d.start && e.at < d.end).length);
+  const views = viewsIn(days), viewsBefore = viewsIn(before);
   const sum = a => a.reduce((x, y) => x + y, 0);
-  const tile = (href, big, label, sp) => `<a class="tile" href="#/dashboard/${href}"><span>${label}</span><b>${big}</b>${sp || ''}</a>`;
-  app.innerHTML = dashHead('todo', '<a class="btn ghost small" href="#/dashboard/insights">' + tr('Open insights') + '</a>') + `<div class="tiles">
-      ${tile('money', money(sum(days.map(d => d.total))), tr('Sales, last 30 days'), spark(days.map(d => d.total), tr('Sales per day')))}
-      ${tile('money', sum(days.map(d => d.count)), tr('Orders, last 30 days'), spark(days.map(d => d.count), tr('Orders per day'), true))}
-      ${tile('interest', sum(views), tr('Listing views, last 30 days'), spark(views, tr('Views per day')))}
-      ${tile('schedule', next ? esc(shortDate(next.meetup.at)) + ' ' + esc(timeOnly(next.meetup.at)) : '–', tr('Next meetup'), `<small class="sub">${watching} ${tr('saves and carts')} · ${unansweredCount()} ${tr('questions')}</small>`)}
+  const delta = (cur, prev) => { if (!prev) return ''; const p = Math.round((cur - prev) / prev * 100);
+    return `<small class="delta ${p >= 0 ? 'up' : 'down'}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p)}% <span>${tr('vs the period before')}</span></small>`; };
+  const tile = (href, big, label, sp, d, why) => `<a class="tile" href="#/dashboard/${href}"><span>${label}</span><b>${big}</b>${d || ''}${sp || ''}${why ? `<small class="why">${tr(why)}</small>` : ''}</a>`;
+  const rangeLabel = { 7: 'last 7 days', 30: 'last 30 days', 90: 'last 90 days' }[N];
+  const seg = `<div class="seg" role="group" aria-label="${esc(tr('Date range'))}">${[[7, '7 days'], [30, '30 days'], [90, '90 days']].map(([d, l]) => `<button type="button" data-act="ovrange" data-days="${d}" aria-pressed="${N === d}">${tr(l)}</button>`).join('')}</div>`;
+  const s = sum(days.map(d => d.total)), sb = sum(before.map(d => d.total)), c = sum(days.map(d => d.count)), cb = sum(before.map(d => d.count));
+  app.innerHTML = dashHead('todo', seg) + `<div class="tiles">
+      ${tile('money', money(s), `${tr('Sales')}, ${tr(rangeLabel)}`, spark(days.map(d => d.total), tr('Sales per day')), delta(s, sb), 'What buyers paid for your items.')}
+      ${tile('money', c, `${tr('Orders')}, ${tr(rangeLabel)}`, spark(days.map(d => d.count), tr('Orders per day'), true), delta(c, cb), 'Finished sales, any size.')}
+      ${tile('interest', sum(views), `${tr('Listing views')}, ${tr(rangeLabel)}`, spark(views, tr('Views per day')), delta(sum(views), sum(viewsBefore)), 'People opening your listings.')}
+      ${tile('schedule', next ? esc(shortDate(next.meetup.at)) + ' ' + esc(timeOnly(next.meetup.at)) : '–', tr('Next meetup'), `<small class="sub">${watching} ${tr('saves and carts')} · ${unansweredCount()} ${tr('questions')}</small>`, '', 'Bring the item and check the buyer\'s code.')}
     </div>
     <div class="sechead"><h2>To do</h2><span class="muted">${open.length} ${tr(open.length === 1 ? 'order' : 'orders')}</span></div>
     ` + (open.length ? open.map(todoCard).join('') : `<p>Nothing to do.</p>
@@ -1012,9 +1076,7 @@ function renderDashTodo() {
 function renderDashSchedule() {
   const st = S(), now = Store.now(), loc = lang() === 'zh' ? 'zh-CN' : 'en-CA';
   const byDay = {};
-  scheduleByDay(st.orders, st.actingSeller, now).forEach(d => d.orders.forEach(o => (byDay[d.day] = byDay[d.day] || []).push({ at: o.meetup.at, o, kind: 'meet' })));
-  myOrders().filter(o => o.state === 'paid_held' && o.digital && o.digital.at && o.digital.at >= now - DAY)
-    .forEach(o => { const k = dayKey(new Date(o.digital.at)); (byDay[k] = byDay[k] || []).push({ at: o.digital.at, o, kind: 'session' }); });
+  scheduleByDay(mainOrders(), st.actingSeller, now).forEach(d => d.orders.forEach(o => (byDay[d.day] = byDay[d.day] || []).push({ at: o.meetup.at, o, kind: 'meet' })));
   myOrders().filter(o => o.state === 'paid_held' && o.fulfilment === 'ship' && o.shipBy)
     .forEach(o => { const k = dayKey(new Date(o.shipBy)); (byDay[k] = byDay[k] || []).push({ at: o.shipBy, o, kind: 'ship' }); });
   const today = new Date(now);
@@ -1080,14 +1142,14 @@ function renderListingForm(id) {
   const kindRadio = (v, title, desc) => `<label class="radio"><input type="radio" name="kind" value="${v}" ${kind === v ? 'checked' : ''}><span><b>${title}</b><span class="muted">${desc}</span></span></label>`;
   const days = it.availDays || [1, 2, 3, 4, 5];
   app.innerHTML = `
-    <h1>${id ? (it.status === 'draft' ? 'Finish listing' : 'Edit listing') : 'Sell something'}</h1>
+    ${kind !== 'physical' ? `<p class="crumb"><a href="#/digital">Trove Digital</a> / <a href="#/digital/selling">Selling</a></p>` : ''}
+    <h1>${id ? (it.status === 'draft' ? 'Finish listing' : 'Edit listing') : kind !== 'physical' ? 'List on Trove Digital' : 'Sell something'}</h1>
     <form data-form="listing" data-id="${id || ''}" data-kind="${kind}" style="max-width:680px" novalidate>
-      <fieldset class="kinds" style="border:0;padding:0;margin:0 0 16px"><legend><b>What are you selling?</b></legend>
-        ${kindRadio('physical', 'A thing', 'Shipped, picked up or dropped off')}
+      ${kind === 'physical' ? `<input type="hidden" name="kind" value="physical">` : `<fieldset class="kinds" style="border:0;padding:0;margin:0 0 16px"><legend><b>What are you selling?</b></legend>
         ${kindRadio('session', 'A session', 'Lessons, coaching or advice by video call')}
         ${kindRadio('download', 'A download', 'Guides, templates, files or custom work')}
         ${kindRadio('ingame', 'A game item', 'Handed over inside a game')}
-      </fieldset>
+      </fieldset>`}
       <label class="drop" id="dropZone" for="photoInput">
         <input type="file" id="photoInput" name="photos" accept="image/*" multiple>
         <b>Add photos</b><span class="muted">Tap to choose, or drag them here. Show any flaws.</span>
@@ -1268,7 +1330,7 @@ function renderDashMoney() {
       <div class="tile"><b>${money(m.profit)}</b><span>Profit after costs</span></div>
     </div>
     <section class="viz"><h2>Sales by week</h2><p class="take">${tr('Last 8 weeks, counted when the buyer has the item.')}</p>
-    ${barChart(weeklySales(S().orders, S().actingSeller, Store.now(), 8).map(w => ({ label: shortDate(w.start + DAY), value: w.total })), shortMoney, tr('Sales by week'))}</section>
+    ${barChart(weeklySales(mainOrders(), S().actingSeller, Store.now(), 8).map(w => ({ label: shortDate(w.start + DAY), value: w.total })), shortMoney, tr('Sales by week'))}</section>
     <div class="sechead"><h2>Completed orders</h2><span class="muted">${closed.length}</span></div>
     ${closed.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Items</th><th class="num">Total</th><th class="num">Fee</th><th class="num">You got</th><th class="num">Profit</th></tr></thead><tbody>
       ${closed.slice(0, moneyAll ? closed.length : 10).map(o => { const p = payoutFor(o); const rf = o.state === 'refunded'; return `<tr><td>${fmtDate(o.closedAt, false)}</td><td>${o.items.map(i => esc(i.title)).join(', ')}${rf ? ` <span class="chip red">${tr('Refunded')}</span>` : ''}</td>
@@ -1280,7 +1342,7 @@ function renderDashMoney() {
 // ---------- insights charts ----------
 // One date range scopes every chart. Each chart has a hover and keyboard tooltip (data-tip), a table view and a one-line takeaway.
 
-let insightDays = 84, ageOpen = -1;
+let insightDays = 84, ageOpen = -1, overviewDays = 30;
 const RANGES = [[28, 'Last 4 weeks'], [84, 'Last 12 weeks'], [0, 'All time']];
 const zh = () => lang() === 'zh';
 const say = (en, cn) => zh() ? cn : en;
@@ -1352,7 +1414,7 @@ function waterfall(p) {
 // Calendar of sales: one square per day, darker for more sales.
 function salesCalendar(days) {
   const st = S(), now = Store.now();
-  const cells = salesByDay(st.orders, st.actingSeller, now, days);
+  const cells = salesByDay(mainOrders(), st.actingSeller, now, days);
   const max = Math.max(1, ...cells.map(c => c.total));
   const lvl = v => v ? Math.min(5, Math.ceil(v / max * 5)) : 0;
   const c = 15, g = 3, left = 34, top = 18;
@@ -1496,7 +1558,7 @@ function meetupGrid(grid) {
 function renderDashInsights() {
   const st = S(), sid = st.actingSeller, now = Store.now();
   const from = insightDays ? now - insightDays * DAY : 0;
-  const items = st.items, orders = st.orders;
+  const items = mainItems(), orders = mainOrders();
   const cmp = periodCompare(orders, sid, now, insightDays || 3650);
   const tts = timeToSell(orders, items, sid, from, now);
   const prevTts = insightDays ? timeToSell(orders, items, sid, from - insightDays * DAY, from) : [];
@@ -1603,7 +1665,7 @@ function parseHash() {
 
 function updateCounts() {
   const st = S();
-  const c = st.cart.length, n = st.inbox.filter(x => !x.read).length;
+  const c = st.cart.length, n = mainInbox().filter(x => !x.read).length;
   document.getElementById('cartCount').innerHTML = c ? `<span class="count">${c}</span>` : '';
   document.getElementById('inboxCount').innerHTML = n ? `<span class="count">${n}</span>` : '';
   const off = st.clockDays;
@@ -1614,7 +1676,9 @@ function route() {
   sweepAll();
   const { parts, params } = parseHash();
   const [a, b, c] = parts;
-  const navKey = a === 'sell' && b === 'new' ? 'sellnew' : a || '';
+  const inDigital = a === 'digital' || (a === 'item' && isDigital(itemById(b) || {})) || (a === 'order' && !!(orderById(b) || {}).digital)
+    || (a === 'sell' && (DIGITAL_KINDS[params.kind] || (b === 'edit' && isDigital(itemById(c) || {}))));
+  const navKey = inDigital ? 'digital' : a === 'sell' && b === 'new' ? 'sellnew' : a || '';
   document.querySelectorAll('nav.main>a').forEach(el => {
     if (el.dataset.nav === navKey) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
   });
@@ -1624,7 +1688,7 @@ function route() {
   renderBrowseMenu();
   if (!a) renderBrowse(params);
   else if (a === 'item') renderItem(b);
-  else if (a === 'digital') renderDigital(params);
+  else if (a === 'digital') ({ orders: renderDigitalOrders, selling: renderDigitalSelling }[b] || renderDigital)(params);
   else if (a === 'seller') renderSeller(b);
   else if (a === 'cart') renderCart();
   else if (a === 'checkout') renderCheckout();
@@ -1637,7 +1701,7 @@ function route() {
   else if (a === 'legal') renderLegal();
   else if (a === 'sell') renderListingForm(b === 'edit' ? c : null);
   else if (a === 'dashboard') ({ schedule: renderDashSchedule, listings: renderDashListings, interest: renderDashInterest, questions: renderDashInterest,
-    money: renderDashMoney, insights: renderDashInsights, profile: renderDashProfile }[b] || renderDashTodo)();
+    money: renderDashMoney, insights: renderDashInsights, pulse: renderDashPulse, profile: renderDashProfile }[b] || renderDashTodo)();
   else app.innerHTML = '<h1>Page not found</h1><p><a href="#/">Back</a></p>';
   app.classList.toggle('console', a === 'dashboard');
   if (a === 'dashboard') {
@@ -1690,7 +1754,7 @@ document.addEventListener('click', e => {
     const pr = S().prefs;
     pr[lk.dataset.look] = lk.dataset.v;
     // Button colours are drawn for light pages, so picking one on a dark or device-matched page switches to white
-    if (lk.dataset.look === 'btn' && ['auto', 'dark', undefined].includes(pr.bg)) pr.bg = 'white';
+    if (lk.dataset.look === 'btn' && ['auto', 'dark'].includes(pr.bg)) pr.bg = 'peach';
     save(); applyLook();
     toast(`${tr(lk.dataset.look === 'bg' ? 'Background' : 'Buttons')}: ${tr((LOOKS[lk.dataset.look].find(x => x[0] === lk.dataset.v) || [])[1] || '')}`);
   }
@@ -1701,6 +1765,7 @@ document.addEventListener('click', e => {
 app.addEventListener('change', e => {
   const t = e.target, f = t.form;
   if (t.dataset.actChange === 'seller') { S().actingSeller = t.value; save(); route(); return; }
+  if (t.dataset.actChange === 'dseller') { S().digitalSeller = t.value; save(); route(); return; }
   if (t.id === 'bulkInput') { addDrafts(t.files); t.value = ''; return; }
   if (t.name === 'kind' && f) { applyKind(f); return; }
   if (!f) return;
@@ -1744,6 +1809,9 @@ app.addEventListener('click', e => {
     case 'sessionDone': if (act(id, 'deliver', 'seller', {})) { toast('Session marked done.'); route(); } break;
     case 'moneyAll': moneyAll = !moneyAll; route(); break;
     case 'range': insightDays = +btn.dataset.days; ageOpen = -1; route(); break;
+    case 'prange': pulseDays = +btn.dataset.days; route(); break;
+    case 'ovrange': overviewDays = +btn.dataset.days; route(); break;
+    case 'pmetric': pulseMetric = btn.dataset.m; route(); break;
     case 'ageBand': { const i = +btn.dataset.i; ageOpen = ageOpen === i ? -1 : i; route(); const t = app.querySelector(`[data-act="ageBand"][data-i="${i}"]`); if (t) t.focus(); break; }
     case 'hideHero': st.prefs.heroHidden = true; save(); route(); toast('Hidden. Bring it back from Menu, Take the tour.'); break;
     case 'density': st.prefs.density = st.prefs.density === 'compact' ? 'large' : 'compact'; save(); route(); break;
@@ -1815,7 +1883,7 @@ app.addEventListener('submit', async e => {
       st.wants.unshift({ what, max, email: fd.get('email') || null, at: Store.now() });
       if (fd.get('email') && !st.me.email) st.me.email = fd.get('email');
       save();
-      const already = search(st.items, what, max ? { maxPrice: max } : {}).results.length;
+      const already = search(st.items, what, max ? { maxPrice: max, digital: false } : { digital: false }).results.length;
       if (already) { toast('Posted. Some are already listed, showing them now.'); location.hash = '#/?q=' + encodeURIComponent(what); }
       else { toast("Posted. You'll get an alert when it's listed."); route(); }
       break;

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -126,8 +126,7 @@ section{padding-block:88px}
 .head p{color:var(--muted);font-size:1.1rem}
 
 .features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
-.features.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-@media (max-width:760px){.features,.features.three{grid-template-columns:1fr}}
+@media (max-width:760px){.features{grid-template-columns:1fr}}
 .feat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px;display:grid;gap:10px;align-content:start}
 .feat .ic{width:48px;height:48px;color:var(--blue-ink)}
 .feat .ic .d{fill:currentColor;fill-opacity:.16}
@@ -229,7 +228,6 @@ footer a{color:var(--muted)}
       <a href="#how">How it works</a>
       <a href="#fees">Fees</a>
       <a href="#sellers">For sellers</a>
-      <a href="#digital">Digital</a>
       <a href="#faq">Questions</a>
     </nav>
     <div class="act">
@@ -436,38 +434,7 @@ footer a{color:var(--muted)}
     </div>
   </section>
 
-  <section class="band" id="digital">
-    <div class="wrap">
-      <div class="head">
-        <p class="eyebrow">New: Trove Digital</p>
-        <h2>Sell what you know, not just what you own.</h2>
-        <p>Lessons, expert advice, downloads and game items, on the same shop and dashboard, with the same no-fee checkout. Buyers who come for one side find the other.</p>
-      </div>
-      <div class="features three">
-        <article class="feat">
-          <svg class="ic" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect class="d" x="3.5" y="7" width="18" height="16" rx="3.5"/><path d="M21.5 13l7-4v14l-7-4"/></svg>
-          <h3>Sessions</h3>
-          <p>Buyers pick a time and pay up front. The seller is paid after the session happens.</p>
-          <ul><li>Coaching, lessons, appraisals</li><li>Refunded if it never happens</li></ul>
-        </article>
-        <article class="feat">
-          <svg class="ic" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="d" d="M8 3.5h11l6 6v19H8z"/><path d="M16 13v9M12.5 18.5L16 22l3.5-3.5"/></svg>
-          <h3>Downloads</h3>
-          <p>Guides, templates and custom work. Files can go out the moment someone pays.</p>
-          <ul><li>Buyers get 2 days to check it</li><li>Custom work delivered from the dashboard</li></ul>
-        </article>
-        <article class="feat">
-          <svg class="ic" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect class="d" x="3.5" y="9" width="25" height="15" rx="7.5"/><path d="M10 14v5M7.5 16.5h5"/><circle cx="21" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="24" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
-          <h3>Game items</h3>
-          <p>Handed over inside the game. Money is released when the buyer confirms it arrived.</p>
-          <ul><li>Only for games whose rules allow it</li><li>No account sales</li></ul>
-        </article>
-      </div>
-      <p style="margin-top:28px"><a class="btn ghost" href="index.html#/digital">See Trove Digital</a></p>
-    </div>
-  </section>
-
-  <section class="band alt" id="faq">
+  <section class="band" id="faq">
     <div class="wrap">
       <div class="head"><p class="eyebrow">Questions</p><h2>Common questions</h2></div>
       <div class="faq">

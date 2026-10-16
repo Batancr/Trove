@@ -8,14 +8,13 @@ const TOUR_SECTIONS = [
   ['start', 'Quick look', '快速了解'],
   ['buy', 'Buying', '购买'],
   ['sell', 'Selling', '出售'],
-  ['digital', 'Trove Digital', 'Trove 数字'],
   ['dash', 'Seller dashboard', '卖家中心'],
   ['insights', 'Insights', '洞察'],
 ];
 
 const tq = sel => document.querySelector(sel);
 const fill = (sel, v) => { const el = tq(sel); if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
-const tourState = { order: null, listing: null, handedOff: false, booking: null };
+const tourState = { order: null, listing: null, handedOff: false };
 
 // The example listing the selling steps fill in, bit by bit.
 function fillListing(withCost) {
@@ -51,8 +50,8 @@ const TOUR_STEPS = [
     text: ['Types, price ranges and pickup near you are all in this one menu.', '类别、价格区间和附近自取都在这个菜单里。'] },
   { section: 'start', route: '#/', target: () => tq('#hero .features'),
     title: ['Pick a part to see it work', '选一个部分看看'],
-    text: ['Next we buy a lantern, list something for sale, book a lesson on Trove Digital, then run the seller dashboard. Use the menu in this card to jump anywhere.',
-      '接下来我们会买一盏灯、上架一件商品、在 Trove 数字预约一节课，再看看卖家中心。可以用卡片里的菜单跳到任何部分。'] },
+    text: ['Next we buy a lantern, list something for sale, then run the seller dashboard. Use the menu in this card to jump anywhere.',
+      '接下来我们会买一盏灯、上架一件商品，再看看卖家中心。可以用卡片里的菜单跳到任何部分。'] },
 
   // ---- buying ----
   { section: 'buy', route: '#/?q=lantern', target: '#app .card',
@@ -133,39 +132,6 @@ const TOUR_STEPS = [
     title: ['Live, and ready to share', '已上架，可以分享'],
     text: ['Published. Share the link to WeChat, RedNote or Facebook in one tap. Listing is free.', '已发布。一键分享到微信、小红书或 Facebook。上架免费。'] },
 
-  // ---- Trove Digital ----
-  { section: 'digital', route: '#/', target: '.dshelf',
-    title: ['Trove Digital', 'Trove 数字'],
-    text: ['Lessons, expert advice, downloads and game items, sold by the same people with the same no-fee checkout. Each side sends buyers to the other.',
-      '课程、专家咨询、下载和游戏物品，由同一批卖家出售，结账同样免费。两边互相带来买家。'] },
-  { section: 'digital', route: '#/digital', target: '.dhow',
-    title: ['Held until it happens', '完成后才放款'],
-    text: ['Sessions are paid after they happen. Downloads get 2 days to check. Game items wait until the buyer confirms they arrived.',
-      '课程结束后才付给卖家。下载有 2 天检查期。游戏物品要等买家确认收到。'] },
-  { section: 'digital', route: '#/item/g101', target: '.slots',
-    title: ['Pick a time', '选择时间'],
-    text: ['This antique shop also sells 30-minute appraisals by video call. Buyers pick one of the open times.',
-      '这家古董店也提供 30 分钟视频鉴定。买家从空闲时间里选一个。'] },
-  { section: 'digital', route: () => tourState.booking ? '#/order/' + tourState.booking : null, target: '.dpanel',
-    run: () => {
-      if (tourState.booking) return;
-      const f = tq('[data-form=buyDigital]');
-      if (!f) return;
-      if (!f.elements.name.value) f.elements.name.value = 'Mei Lin';
-      if (!f.elements.email.value) f.elements.email.value = 'mei@example.com';
-      const before = new Set(S().orders.map(o => o.id));
-      f.requestSubmit();
-      const made = S().orders.find(o => !before.has(o.id));
-      if (made) tourState.booking = made.id;
-    },
-    title: ['Booked', '已预约'],
-    text: ['We booked the first time. The money is held by Trove until the session is over, and refunded if it never happens.',
-      '我们预约了第一个时间。款项由 Trove 托管到课程结束；如果课程没有进行就退款。'] },
-  { section: 'digital', route: '#/dashboard', target: () => { const b = tq('[data-act=sessionDone]:not([disabled])'); return b && b.closest('.todo'); },
-    title: ['Sessions on the same dashboard', '课程也在同一个后台'],
-    text: ['Yesterday’s appraisal is done, so the seller marks it here. The buyer has 2 days to report a problem, then the money is paid out.',
-      '昨天的鉴定已经完成，卖家在这里标记。买家有 2 天可以报告问题，之后款项就会付出。'] },
-
   // ---- seller dashboard ----
   { section: 'dash', route: '#/dashboard', target: '.side',
     title: ['Your seller dashboard', '你的卖家中心'],
@@ -240,7 +206,7 @@ const Tour = (() => {
   function start(section) {
     if (at >= 0) { go(section ? firstOf(section) : 0); return; }
     returnTo = location.hash || '#/';
-    Object.assign(tourState, { order: null, listing: null, handedOff: false, booking: null });
+    Object.assign(tourState, { order: null, listing: null, handedOff: false });
     Store.tourBegin((ex, own) => {
       // keep how the site looks and reads; everything else is the example shop
       ex.prefs = { ...ex.prefs, lang: own.prefs.lang, bg: own.prefs.bg, btn: own.prefs.btn, density: own.prefs.density, tourDone: true };

@@ -4,6 +4,30 @@
 // These translations were written without a native speaker's review: have one check them before launch.
 
 const ZH = {
+  // Digital tab, Pulse, overview
+  'What needs doing, and how the shop is doing.': '要处理的事，以及店铺的情况。',
+  'Match device': '跟随设备', 'Light peach': '浅桃色', 'My purchases': '我的购买', 'Browse': '浏览', 'Start selling': '开始出售',
+  'Selling on Trove Digital': '在 Trove 数字出售', 'List on Trove Digital': '在 Trove 数字上架', 'Nothing bought on Trove Digital yet.': '还没有在 Trove 数字购买过。',
+  'Earned': '已赚到', 'Held for you': '为你托管中', 'Sales': '销售', 'Listings': '商品', 'Needs an answer': '待回答', 'No listings yet.': '还没有商品。',
+  'Pulse': '脉搏', 'Your shop at a glance, live. Switch the range or what the charts show.': '一眼看清店铺实时状况。可切换时间范围和图表内容。',
+  '7 days': '7 天', '30 days': '30 天', '90 days': '90 天', 'last 7 days': '最近 7 天', 'last 30 days': '最近 30 天', 'last 90 days': '最近 90 天',
+  'LIVE': '实时', 'Exact numbers are in Insights': '准确数字请看洞察', 'Recent activity': '最近动态',
+  'Orders': '订单', 'Views': '浏览', 'Average order': '平均订单', 'vs the period before': '对比上一期', 'New this period': '本期新增',
+  'What buyers paid for your items.': '买家为你的商品支付的金额。', 'Finished sales, any size.': '已完成的销售，不论大小。',
+  'People opening your listings.': '打开你商品的人数。', 'Bundle items to raise this.': '组合出售可以提高这个数字。',
+  'Shop pulse': '店铺脉搏', 'Sales this period against the one before. 50 means level.': '本期销售对比上一期。50 表示持平。',
+  'PULSE': '脉搏', 'Released': '已放款', 'Held': '托管中', 'Live': '在售',
+  'Signal': '信号', 'Spot busy and quiet days. Tap a number above or switch here to change what it shows.': '找出忙碌和冷清的日子。点上面的数字或在这里切换显示内容。', 'Show': '显示',
+  'Sales clock': '销售时钟', 'Set meetups and post new listings when buyers are most active.': '在买家最活跃的时候安排见面和上新。', 'BUSIEST': '最忙', 'Sales by hour': '按小时的销售',
+  'Category orbit': '类别轨道', 'Which types earn the most, so you know what to buy more of.': '哪类商品赚得最多，帮你决定多进什么货。', 'Sales by type': '按类别的销售',
+  'Shop profile': '店铺画像', 'Your strongest and weakest habits as a seller, out of 100.': '你作为卖家最强和最弱的习惯，满分 100。',
+  'Speed': '速度', 'Trust': '信任', 'Variety': '种类', 'Replies': '回复', 'Demand': '需求', 'Momentum': '势头',
+  'Buyer flow': '买家流向', 'Where buyers drop off between looking and buying.': '买家在浏览到购买之间在哪一步离开。', 'Buyer flow, last 30 days': '买家流向',
+  'Sales honeycomb': '销售蜂巢', 'Streaks and gaps over 12 weeks, one cell per day.': '12 周内的连续和空档，每格一天。', 'Sales by day, last 12 weeks': '最近 12 周每天销售',
+  'Weekly equalizer': '每周均衡器', 'Is the shop growing week to week?': '店铺是否每周在增长？', 'Week of': '当周', 'This week': '本周',
+  'Shop health': '店铺健康', 'Small habits that keep buyers coming back.': '让买家回头的小习惯。',
+  'Listings live': '在售商品', 'Questions answered': '已回答问题', 'Money released': '已放款', 'Sales goal': '销售目标',
+  'Saved': '已收藏', 'Question': '提问', 'views': '次浏览', 'Listing views': '商品浏览', 'Bring the item and check the buyer\'s code.': '带上商品并核对买家的交接码。',
   // Trove Digital
   'Digital': '数字', 'Trove Digital': 'Trove 数字', 'New': '新', 'Lessons, advice and downloads': '课程、咨询和下载', 'Newest': '最新',
   'match on Trove Digital': '个结果在 Trove 数字', 'matches on Trove Digital': '个结果在 Trove 数字',
