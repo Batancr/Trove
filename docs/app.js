@@ -266,7 +266,7 @@ function hero() {
   return `<section class="hero" id="hero" aria-label="What Trove does">
     <div class="hero-head">
       <div class="hero-title"><span class="fee-badge">${icon('fee', 44)}</span>
-        <div><h1>No fees to buy or sell.</h1><p class="lede">Sellers keep the full price. Buyers pay only the price and any delivery.</p></div></div>
+        <div><h1>No Trove fees.</h1><p class="lede">Buyers pay only the price and any delivery. Cash and e-Transfer are free; card and PayPal have a small processing fee that comes out of the sale.</p></div></div>
       <div class="row"><button type="button" data-act="tour">Take the tour</button>
         <button type="button" class="ghost small" data-act="hideHero">Hide</button></div>
     </div>
@@ -376,6 +376,7 @@ function renderItem(id) {
         <div class="bigprice">${money(it.price)}</div>
         <p><span class="chip">${esc(conditionLabel(it.condition))}</span>
           <span class="muted">${it.ships ? `<span>${tr('Shipping from')}</span> ${money(shippingFor([it]))}` : `<span>${tr('Pickup only')}</span>`}${it.meetup && it.ships ? ` · <span>${tr('Free pickup')}</span>` : ''}</span></p>
+        <p class="muted" style="margin-top:4px"><span>${tr('Accepts')}</span> ${(seller.payMethods || ALL_METHODS).map(m => `<span>${tr(PAY_METHODS[m].label)}</span>`).join(' · ')}</p>
         ${it.status === 'active' ? `<div class="row">
           ${inCart ? '<a class="btn" href="#/cart">In your cart</a>' : `<button type="button" data-act="addCart" data-id="${it.id}">Add to cart</button>`}
           <button type="button" class="ghost" data-act="fav" data-id="${it.id}" aria-pressed="${fav}">${fav ? 'In favourites' : 'Add to favourites'}</button>
@@ -660,17 +661,21 @@ function cartLines() {
 function checkoutChoice(lines) {
   const st = S();
   const canShip = lines.every(i => i.ships), canMeet = lines.every(i => i.meetup);
-  const ch = st.checkout || (st.checkout = { fulfilment: canShip ? 'ship' : 'meetup', payment: 'online' });
+  const ch = st.checkout || (st.checkout = { fulfilment: canShip ? 'ship' : 'meetup', method: 'card' });
   if (ch.fulfilment === 'ship' && !canShip) ch.fulfilment = 'meetup';
   if (ch.fulfilment !== 'ship' && !canMeet) ch.fulfilment = 'ship';
-  if (ch.fulfilment === 'ship') ch.payment = 'online';
-  return { ch, canShip, canMeet };
+  // Only methods every seller here accepts; shipping needs one that holds the money
+  const sellers = [...new Set(lines.map(i => i.sellerId))].map(sellerById).filter(Boolean);
+  const methods = methodsFor(sellers, ch.fulfilment);
+  if (!methods.includes(ch.method)) ch.method = methods[0] || 'card';
+  ch.payment = PAY_METHODS[ch.method].payment;
+  return { ch, canShip, canMeet, methods };
 }
 
 function renderCart() {
   const lines = cartLines();
   if (!lines.length) { app.innerHTML = '<h1>Cart</h1><p><span>Empty.</span> <a href="#/">Start browsing</a></p>'; return; }
-  const { ch, canShip, canMeet } = checkoutChoice(lines);
+  const { ch, canShip, canMeet, methods } = checkoutChoice(lines);
   const t = cartTotalsAll(lines, ch.fulfilment, ch.payment);
   const radio = (name, val, title, desc, disabled) => `<label class="radio"><input type="radio" name="${name}" value="${val}" ${ch[name] === val ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><b>${title}</b><span class="muted">${desc}</span></span></label>`;
   const na = 'Not available for everything here';
@@ -686,9 +691,9 @@ function renderCart() {
           ${radio('fulfilment', 'ship', 'Ship it', canShip ? 'Tracked' : na, !canShip)}
           ${radio('fulfilment', 'meetup', 'Pick it up', canMeet ? 'Free, inspect before you hand over your code' : na, !canMeet)}
           ${radio('fulfilment', 'delivery', 'Local drop-off', canMeet ? `${money(CONFIG.localDeliveryFee)} / ${tr('seller')}` : na, !canMeet)}
-          ${ch.fulfilment !== 'ship' ? `<h2 style="margin-top:18px">Payment</h2>
-            ${radio('payment', 'online', 'Pay now, protected', 'Held until the handoff')}
-            ${radio('payment', 'at_handoff', 'Pay in person', 'Cash or e-Transfer, not protected')}` : ''}
+          <h2 style="margin-top:18px">Payment</h2>
+          ${methods.map(m => radio('method', m, PAY_METHODS[m].label, PAY_METHODS[m].held ? 'Protected: held until you have it' : 'Paid at the meetup, not protected')).join('')}
+          ${ch.fulfilment === 'ship' ? `<p class="hint">${tr('Shipped orders are paid by card or PayPal so the money is held until it arrives.')}</p>` : ''}
         </form>
       </div>
       <div class="panel" style="align-self:start">
@@ -724,7 +729,7 @@ function renderCheckout() {
           <label class="f"><span>Meet at</span><select name="place">${MEET_SPOTS.map(s => `<option value="${esc(s)}">${esc(tr(s))}</option>`).join('')}</select></label>`}
         ${ch.fulfilment !== 'ship' ? `<label class="f"><span>When</span><input type="datetime-local" name="at" required value="${local}"></label>` : ''}
         <label class="row" style="margin:4px 0 18px"><input type="checkbox" name="marketing" ${S().prefs.marketing ? 'checked' : ''}> <span>Send me new arrivals now and then</span></label>
-        <button type="submit">${ch.payment === 'online' ? `${tr('Pay')} ${money(t.total)}` : 'Reserve'}</button>
+        <button type="submit">${ch.payment === 'online' ? `${tr('Pay')} ${money(t.total)} · ${tr(PAY_METHODS[ch.method].label)}` : `${tr('Reserve')} · ${tr(PAY_METHODS[ch.method].label)}`}</button>
         <p class="hint">${ch.payment === 'online' ? `<span>${tr('Demo: nothing is charged.')}</span> ` : ''}<span>${tr('By ordering you agree to the')}</span> <a href="#/legal">terms</a>.</p>
       </form>
       <div class="panel" style="align-self:start">
@@ -751,7 +756,7 @@ function placeOrder(form) {
     let order;
     try {
       order = createOrder({
-        id: Store.nextOrderId(), sellerId: g.sellerId, items: g.items, buyer: { ...st.me }, fulfilment: ch.fulfilment, payment: ch.payment,
+        id: Store.nextOrderId(), sellerId: g.sellerId, items: g.items, buyer: { ...st.me }, fulfilment: ch.fulfilment, payment: ch.payment, method: ch.method,
         now: Store.now(), checkMinimum: false, address: fd.get('address') || null,
         meetup: ch.fulfilment === 'ship' ? null : { place: fd.get('place') || 'Your address', at },
       });
@@ -810,7 +815,7 @@ function renderOrder(id) {
         <a class="seller" href="#/seller/${seller.id}" style="margin-top:0;border-top:0">${avatar(seller)}<b>${esc(seller.name)}</b></a>
         ${o.items.map(i => `<p style="margin:0 0 8px"><a href="#/item/${i.id}">${esc(i.title)}</a><br>${money(i.price)}</p>`).join('')}
         <p>${o.digital ? esc(tr(DIGITAL_KINDS[o.digital.kind].label)) : o.shipping ? `${tr('Delivery')} ${money(o.shipping)}` : tr('Free pickup')}<br><b>${tr('Total')} ${money(o.total)}</b><br>
-        <span class="muted">${o.payment === 'online' ? 'Paid online, protected' : 'Paying in person'}</span></p>
+        <span class="muted"><span>${tr(PAY_METHODS[o.method || (o.payment === 'online' ? 'card' : 'cash')].label)}</span> · <span>${tr(o.payment === 'online' ? 'Paid online, protected' : 'Paying in person')}</span></span></p>
         ${o.tracking ? `<p><span>${tr('Tracking')}</span> <b>${esc(o.tracking)}</b></p>` : ''}
         ${o.packPhoto ? `<p><img class="packimg" src="${o.packPhoto}" alt="Seller's photo of the item being packed"><br><span class="hint">Packed by the seller</span></p>` : ''}
       </div>
@@ -886,7 +891,7 @@ function renderHelp() {
       <li><b>Not as described or damaged:</b> report it with photos within ${CONFIG.checkWindowDays} days of delivery. Refund in full, or partly if you keep it. [Who pays return shipping?]</li>
       <li><b>Changed your mind:</b> [up to each seller, shown on the listing?]</li>
       <li>Refunds go back to the original payment method.</li></ul>
-    <h2>Fees</h2><p>Buyers pay the price plus delivery, shown before checkout. Nothing else.</p></div>`;
+    <h2>Fees</h2><p>Trove charges no fee. Buyers pay the price plus delivery, shown before checkout. When a buyer pays by card or PayPal, the payment company keeps about 2.9% + 30¢, taken from the seller's payout. Cash and e-Transfer at a meetup are free.</p></div>`;
 }
 
 function renderLegal() {
@@ -1326,7 +1331,7 @@ function renderDashMoney() {
     <div class="tiles">
       <div class="tile"><b>${money(m.held)}</b><span>On the way to you</span></div>
       <div class="tile"><b>${money(m.released + m.inPerson)}</b><span>Earned</span></div>
-      <div class="tile"><b>${money(CONFIG.trovePaysCardFee ? 0 : m.fees)}</b><span>${CONFIG.trovePaysCardFee ? tr('Fees you paid') : tr('Card fees')}</span></div>
+      <div class="tile"><b>${money(CONFIG.trovePaysCardFee ? 0 : m.fees)}</b><span>${CONFIG.trovePaysCardFee ? tr('Fees you paid') : tr('Card and PayPal fees')}</span></div>
       <div class="tile"><b>${money(m.profit)}</b><span>Profit after costs</span></div>
     </div>
     <section class="viz"><h2>Sales by week</h2><p class="take">${tr('Last 8 weeks, counted when the buyer has the item.')}</p>
@@ -1336,7 +1341,7 @@ function renderDashMoney() {
       ${closed.slice(0, moneyAll ? closed.length : 10).map(o => { const p = payoutFor(o); const rf = o.state === 'refunded'; return `<tr><td>${fmtDate(o.closedAt, false)}</td><td>${o.items.map(i => esc(i.title)).join(', ')}${rf ? ` <span class="chip red">${tr('Refunded')}</span>` : ''}</td>
         <td class="num">${money(rf ? 0 : o.total)}</td><td class="num">${money(rf ? 0 : p.fee)}</td><td class="num">${money(rf ? 0 : p.net)}</td><td class="num">${money(rf ? -p.label : p.profit)}</td></tr>`; }).join('')}
     </tbody></table></div>${closed.length > 10 ? `<p><button type="button" class="ghost small" data-act="moneyAll">${moneyAll ? tr('Show fewer') : tr('Show all') + ' ' + closed.length}</button></p>` : ''}` : '<p class="muted">None yet.</p>'}
-    <p class="hint">${CONFIG.trovePaysCardFee ? tr('No fees for you or your buyers. Trove pays the card processing.') : tr('Trove charges no fee. Card fees are an estimate until payments are live.')}</p>`;
+    <p class="hint">${CONFIG.trovePaysCardFee ? tr('No fees for you or your buyers. Trove pays the card processing.') : tr('Trove charges no fee. Card and PayPal processors keep about 2.9% + 30¢ of each online payment (an estimate until payments are live). Cash and e-Transfer are free.')}</p>`;
 }
 
 // ---------- insights charts ----------
@@ -1379,7 +1384,7 @@ function deltaTag(cur, prev, money = false) {
 function waterfall(p) {
   const steps = [['Item sales', p.sales, 'add'], ['Shipping charged', p.shipping, 'add'], ['What items cost you', -p.itemCost, 'sub'],
     ['Shipping labels', -p.labels, 'sub']];
-  if (p.fees) steps.push(['Card fees', -p.fees, 'sub']);
+  if (p.fees) steps.push(['Card and PayPal fees', -p.fees, 'sub']);
   steps.push(['Profit', p.profit, 'total']);
   const W = vw(), H = 190, top = 24, base = top + H, bw = 32, band = W / steps.length;
   const max = niceMax(p.sales + p.shipping);
@@ -1651,6 +1656,9 @@ function renderDashProfile() {
       <label class="f"><span>Shop name</span><input name="name" required maxlength="40" value="${esc(s.name)}"></label>
       <label class="f"><span>City</span><input name="city" maxlength="40" value="${esc(s.city)}"></label>
       <label class="f"><span>About</span><small>Shown on your profile.</small><textarea name="about" maxlength="400">${esc(s.about)}</textarea></label>
+      <fieldset style="border:0;padding:0;margin:0 0 16px"><legend><b>Payments you accept</b></legend>
+        ${ALL_METHODS.map(m => `<label class="radio"><input type="checkbox" name="pay" value="${m}" ${(s.payMethods || ALL_METHODS).includes(m) ? 'checked' : ''}><span><b>${tr(PAY_METHODS[m].label)}</b><span class="muted">${tr(PAY_METHODS[m].held ? 'Held until the buyer has it. The processor keeps about 2.9% + 30¢ (estimate).' : 'Free. Paid at the meetup, not protected.')}</span></span></label>`).join('')}
+        <small class="hint">Shipped orders always use card or PayPal, so keep at least one of them on if you ship.</small></fieldset>
       <div class="row"><button type="submit">Save</button><a href="#/seller/${s.id}">View profile</a></div>
     </form>`;
 }
@@ -1776,7 +1784,7 @@ app.addEventListener('change', e => {
   }
   if (f.dataset.form === 'choice') {
     const fd = new FormData(f);
-    S().checkout = { fulfilment: fd.get('fulfilment'), payment: fd.get('payment') || 'online' };
+    S().checkout = { fulfilment: fd.get('fulfilment'), method: fd.get('method') || 'card' };
     save(); route();
   }
   if (t.id === 'photoInput') { addPhotos(t.files); t.value = ''; }
@@ -1892,7 +1900,9 @@ app.addEventListener('submit', async e => {
       st.prefs = { ...st.prefs, buyer: fd.get('buyer'), seller: fd.get('seller'), marketing: !!fd.get('marketing'), lang: fd.get('lang') || 'en' };
       save(); route(); toast('Saved.'); break;
     case 'profile':
-      Object.assign(me(), { name: fd.get('name').trim(), city: fd.get('city').trim(), about: fd.get('about').trim() });
+      { const pay = fd.getAll('pay');
+        if (!pay.length) { toast('Pick at least one way to get paid.'); break; }
+        Object.assign(me(), { name: fd.get('name').trim(), city: fd.get('city').trim(), about: fd.get('about').trim(), payMethods: pay }); }
       save(); toast('Saved.'); route(); break;
   }
 });

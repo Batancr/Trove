@@ -9,7 +9,10 @@ const CONFIG = {
   cardFeePct: 2.9,
   cardFeeFixed: 30,               // cents
   marketplaceFeePct: 0,           // Trove takes nothing from sellers for now
-  trovePaysCardFee: true,         // launch offer: Trove absorbs card processing so neither side pays a fee
+  trovePaysCardFee: false,        // decided 16 Oct: the seller covers the card or PayPal processor's cut; Trove pays nothing
+  // PayPal estimate. Placeholder only: check PayPal's current Canadian merchant rates.
+  paypalFeePct: 2.9,
+  paypalFeeFixed: 30,             // cents
   minOnlineOrder: 500,            // cents. Card orders below this would lose most of the value to fees
   shipByDays: 3,                  // seller must ship within this many days of payment, or the buyer is refunded
   checkWindowDays: 3,             // after delivery, the buyer has this long to report a problem
@@ -92,6 +95,29 @@ const DIGITAL_KINDS = {
 };
 const DIGITAL_CATEGORIES = ['Coaching and lessons', 'Expert advice', 'Creative services', 'Downloads', 'Game items'];
 const isDigital = it => !!(it && it.digital);
+
+// How a buyer can pay. Card and PayPal go through a payment company that holds the money until the buyer has the item;
+// e-Transfer and cash go straight to the seller at the meetup, so they aren't protected and can't be used for shipping.
+const PAY_METHODS = {
+  card:      { label: 'Card', payment: 'online', held: true, how: 'Held until you have it' },
+  paypal:    { label: 'PayPal', payment: 'online', held: true, how: 'Held until you have it' },
+  etransfer: { label: 'Interac e-Transfer', payment: 'at_handoff', held: false, how: 'Sent to the seller at the meetup, not protected' },
+  cash:      { label: 'Cash', payment: 'at_handoff', held: false, how: 'Paid at the meetup, not protected' },
+};
+const ALL_METHODS = Object.keys(PAY_METHODS);
+
+// Methods every seller in the cart accepts, that also work for this way of getting it.
+function methodsFor(sellers, fulfilment) {
+  return ALL_METHODS.filter(m => sellers.every(s => (s.payMethods || ALL_METHODS).includes(m)))
+    .filter(m => fulfilment === 'ship' || fulfilment === 'digital' ? PAY_METHODS[m].held : true);
+}
+
+// The payment company's cut on an online payment. Cash and e-Transfer cost nothing.
+function processingFee(totalCents, method, cfg = CONFIG) {
+  if (method === 'paypal') return Math.round(totalCents * cfg.paypalFeePct / 100) + cfg.paypalFeeFixed;
+  if (method === 'etransfer' || method === 'cash') return 0;
+  return cardFee(totalCents, cfg);
+}
 
 // fulfilment: 'ship' | 'meetup' | 'delivery' | 'digital'; payment: 'online' | 'at_handoff'
 function cartTotals(items, fulfilment, payment, cfg = CONFIG) {
@@ -184,15 +210,15 @@ function makeHandoffCode(rand = Math.random) {
   return s;
 }
 
-function createOrder({ id, sellerId, items, buyer, fulfilment, payment, meetup, address, slot, now, rand = Math.random, checkMinimum = true }, cfg = CONFIG) {
+function createOrder({ id, sellerId, items, buyer, fulfilment, payment, method, meetup, address, slot, now, rand = Math.random, checkMinimum = true }, cfg = CONFIG) {
   const t = cartTotals(items, fulfilment, payment, checkMinimum ? cfg : { ...cfg, minOnlineOrder: 0 });
   if (!t.ok) throw new Error(t.problems[0]);
   const online = payment === 'online';
   const order = {
-    id, sellerId: sellerId || null, buyer, fulfilment, payment,
+    id, sellerId: sellerId || null, buyer, fulfilment, payment, method: method || (online ? 'card' : 'cash'),
     items: items.map(it => ({ id: it.id, title: it.title, price: it.price, qty: it.qty || 1, size: it.size, cost: it.cost || 0, ...(it.digital ? { digital: it.digital } : {}) })),
     subtotal: t.subtotal, shipping: t.shipping, tax: t.tax, total: t.total,
-    cardFee: online ? cardFee(t.total, cfg) : 0,
+    cardFee: online ? processingFee(t.total, method || 'card', cfg) : 0,
     meetup: meetup || null, address: address || null,
     handoffCode: fulfilment === 'ship' || fulfilment === 'digital' ? null : makeHandoffCode(rand),
     digital: fulfilment === 'digital' ? { kind: items[0].digital, at: slot || null, game: items[0].game || null, delivery: null } : null,
@@ -634,7 +660,7 @@ function ordersCsv(orders, cfg = CONFIG) {
 if (typeof module !== 'undefined') {
   module.exports = {
     CONFIG, DAY, STATES, ACTIONS, CONDITIONS,
-    cents, fmtMoney, cardFee, packBoxes, shippingFor, spareSmallSlots, cartTotals, splitBySeller, cartTotalsAll, sellerStats,
+    cents, fmtMoney, cardFee, PAY_METHODS, ALL_METHODS, methodsFor, processingFee, packBoxes, shippingFor, spareSmallSlots, cartTotals, splitBySeller, cartTotalsAll, sellerStats,
     makeHandoffCode, createOrder, canDo, transition, sweep, moneySteps, payoutFor, moneySummary,
     notificationsFor, parseQuery, search, validateListing, ordersCsv, csvCell,
     DIGITAL_KINDS, DIGITAL_CATEGORIES, isDigital, validateDigital, openSlots,

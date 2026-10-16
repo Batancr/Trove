@@ -41,7 +41,7 @@ const TOUR_STEPS = [
       '一个买卖双方都不收费的市场。导览使用示例店铺，可以随便点，这里的操作都不会保存。'] },
   { section: 'start', route: '#/', target: '#hero .fee-badge',
     title: ['No fees, either side', '买卖双方都免费'],
-    text: ['Sellers keep the full price. Buyers pay the price and any delivery, nothing more.', '卖家拿到全部售价。买家只付价格和运费。'] },
+    text: ['Trove takes nothing. Buyers pay the price and any delivery. Cash and e-Transfer are free; card and PayPal have a small processing fee that comes out of the sale.', 'Trove 不收任何费用。买家只付价格和运费。现金和 e-Transfer 免费；刷卡和 PayPal 有少量手续费，从售价中扣除。'] },
   { section: 'start', route: '#/', target: '#searchForm',
     title: ['Search in plain words', '直接搜索'],
     text: ['Type what you want, even “lamp under $30”. Trove reads the price for you.', '直接输入想要的东西，比如“30 元以下的灯”。'] },

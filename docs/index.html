@@ -395,7 +395,7 @@ footer a{color:var(--muted)}
         <div class="tile w3 rv"><div class="viz"><div style="width:100%;max-width:320px"><div class="qsearch" id="qs">brass under $40 pickup</div><div class="qchips"><span>Brass</span><span>≤ $40</span><span>Pickup</span></div></div></div><div><h3>Search in plain words</h3><p>Price, era and pickup understood.</p></div></div>
         <div class="tile w3 rv d1"><div class="viz"><div class="boxes"><i style="width:60px;height:50px"></i><i style="width:84px;height:72px"></i><i style="width:110px;height:96px"></i></div></div><div><h3>Combined shipping</h3><p>Small finds share a box.</p></div></div>
         <div class="tile rv"><div class="viz"><div class="qa"><div>Does the wind-up still work?</div><div>Yes, runs about two metres.</div></div></div><div><h3>Public Q&amp;A</h3></div></div>
-        <div class="tile rv d1"><div class="viz"><div><div class="lang" role="group" aria-label="Language"><button type="button" aria-pressed="true" data-l="en">English</button><button type="button" aria-pressed="false" data-l="zh" lang="zh-Hans">中文</button></div><div class="langtxt" id="langtxt">No fees to buy or sell.</div></div></div><div><h3>English and 中文</h3></div></div>
+        <div class="tile rv d1"><div class="viz"><div><div class="lang" role="group" aria-label="Language"><button type="button" aria-pressed="true" data-l="en">English</button><button type="button" aria-pressed="false" data-l="zh" lang="zh-Hans">中文</button></div><div class="langtxt" id="langtxt">No Trove fees to buy or sell.</div></div></div><div><h3>English and 中文</h3></div></div>
         <div class="tile rv d2"><div class="viz"><div class="drafts"><i style="background:#eadfc9"></i><i style="background:#dfe3e8"></i><i style="background:#e3e8dc"></i><i style="background:#e5d8cf"></i></div></div><div><h3>A box at once</h3><p>Many photos, many drafts.</p></div></div>
       </div>
     </div>
@@ -514,7 +514,7 @@ footer a{color:var(--muted)}
   show(0);
 
   // Language tile
-  const LANG = { en: 'No fees to buy or sell.', zh: '买卖都不收手续费。' };
+  const LANG = { en: 'No Trove fees to buy or sell.', zh: '买卖都不收 Trove 费用。' };
   $$('.lang button').forEach(b => b.addEventListener('click', () => {
     $$('.lang button').forEach(x => x.setAttribute('aria-pressed', x === b));
     const t = $('#langtxt'); t.textContent = LANG[b.dataset.l]; t.lang = b.dataset.l === 'zh' ? 'zh-Hans' : 'en';
