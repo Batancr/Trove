@@ -3,7 +3,7 @@
 // so app.js only ever calls Store.* and never touches storage directly.
 
 const Store = (() => {
-  const KEY = 'trove.v4';
+  const KEY = 'trove.v5';
   let state = null;
   let setAside = null;   // the visitor's own data while the tour runs on example data
 
@@ -11,11 +11,12 @@ const Store = (() => {
     const now = Date.now();
     const items = sampleItems(now);
     const past = sampleHistory(now, items);
+    const digital = sampleDigital(now), dpast = sampleDigitalHistory(now, digital);
     return {
-      items: items.concat(past.items), events: past.events, recent: [],
+      items: items.concat(past.items, digital), events: past.events.concat(dpast.events), recent: [],
       sellers: SAMPLE_SELLERS.map(x => ({ ...x })),
       actingSeller: 's1',   // demo only: which seller's dashboard you're looking at
-      orders: past.orders, wants: [{ what: 'cast iron skillet', max: 4000, at: now - DAY }, { what: 'vintage film camera', max: null, at: now - 2 * DAY }],
+      orders: dpast.orders.concat(past.orders), wants: [{ what: 'cast iron skillet', max: 4000, at: now - DAY }, { what: 'vintage film camera', max: null, at: now - 2 * DAY }],
       misses: [{ q: 'record player', at: now - DAY, count: 3 }], inbox: [],
       cart: [], favs: [],
       prefs: { buyer: 'essentials', seller: 'essentials', marketing: false, lang: 'en', density: 'large', heroHidden: false, tourDone: false },

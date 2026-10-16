@@ -37,6 +37,8 @@ function artSvg(kind, tone) {
 const SAMPLE_SELLERS = [
   { id: 's1', name: 'Maple Lane Finds', city: 'Ottawa, ON', about: 'Antiques and old things from estate sales and barns. Every flaw photographed.', joined: '2026-10' },
   { id: 's2', name: "Sam's Spare Room", city: 'Ottawa, ON', about: 'Clearing out good stuff I no longer use. Happy to meet downtown.', joined: '2026-10' },
+  { id: 's3', name: 'Knight Moves Coaching', city: 'Toronto, ON', about: 'Chess lessons for adults and kids, online. Every lesson ends with a game review.', joined: '2026-10' },
+  { id: 's4', name: 'Pixel Forge', city: 'Vancouver, BC', about: 'Game builds, skins and in-game items for games that allow trading.', joined: '2026-10' },
 ];
 
 const SAMPLE_ITEMS = [
@@ -230,6 +232,71 @@ function sampleHistory(now, items) {
   }
   return out;
 }
+
+// Trove Digital samples: services, downloads and game items. "Starfall Online" is a made-up game.
+// [seller, title, price, kind, category, art, description, extra]
+const SAMPLE_DIGITAL = [
+  ['s1', 'Antique appraisal by video call, 30 min', 3500, 'session', 'Expert advice', 'clock',
+    'Show me your piece on camera and I will tell you what it is, roughly when it was made, and a fair price range. You get written notes afterwards.',
+    { durationMin: 30, hours: [10, 14, 19] }],
+  ['s1', 'Guide: cleaning brass and copper safely (PDF)', 900, 'download', 'Downloads', 'candle',
+    'A 14-page illustrated guide from 20 years of restoring estate finds: what to use, what never to use, and how to keep patina.', { delivers: 'PDF, 14 pages', instant: 'brass-and-copper-guide.pdf' }],
+  ['s2', 'Beginner guitar lesson, 45 min', 3000, 'session', 'Coaching and lessons', 'headphones',
+    'First chords, strumming and a song you can play by the end. Bring any acoustic guitar.', { durationMin: 45, hours: [18, 20] }],
+  ['s3', 'Chess lesson with game review, 60 min', 4500, 'session', 'Coaching and lessons', 'game',
+    'We review one of your games, then work on the openings and endgames you need most. All levels.', { durationMin: 60, hours: [9, 16, 19] }],
+  ['s3', 'Opening repertoire for beginners (PDF and study files)', 1500, 'download', 'Downloads', 'book',
+    'A complete, simple repertoire for White and Black with explanations, plus study files you can import into most chess apps.', { delivers: 'PDF and PGN files', instant: 'beginner-repertoire.zip' }],
+  ['s4', 'Custom cottage build, delivered as a world file', 2500, 'download', 'Creative services', 'plant',
+    'A furnished lakeside cottage built to your colour choices. You get a world file to load in your own game, within 2 days.', { delivers: 'World file and screenshots' }],
+  ['s4', 'Starfall Online: Ember Wing glider skin', 800, 'ingame', 'Game items', 'duck',
+    'Rare glider skin, traded to your character through the in-game trade window. Tell me your character name at checkout.',
+    { game: 'Starfall Online (example game)', gameAllowsTrade: true }],
+  ['s4', 'Starfall Online: starter crafting kit', 600, 'ingame', 'Game items', 'pot',
+    'Fifty refined ore, twenty planks and a tier 2 hammer, traded in game. Good for a new character.',
+    { game: 'Starfall Online (example game)', gameAllowsTrade: true }],
+];
+
+// Next free session times: the coming 8 days at the seller's usual hours.
+function sampleSlots(now, hours) {
+  const out = [], d = new Date(now);
+  for (let i = 1; i <= 8; i++) hours.forEach(h => out.push(new Date(d.getFullYear(), d.getMonth(), d.getDate() + i, h).getTime()));
+  return out;
+}
+
+function sampleDigital(now) {
+  return SAMPLE_DIGITAL.map(([sellerId, title, price, digital, category, art, description, extra], i) => {
+    const { hours, ...rest } = extra;
+    return { id: 'g' + (101 + i), sellerId, title, price, digital, category, art, description, tone: TONES[(i + 2) % TONES.length],
+      status: 'active', qty: 1, photos: [], alt: 'Line drawing for ' + title.toLowerCase(), questions: [],
+      listedAt: now - (3 + i * 4) * DAY, cost: 0, ...rest, ...(hours ? { slots: sampleSlots(now, hours) } : {}) };
+  });
+}
+
+// A few finished digital sales, plus one session that just happened, so the dashboard shows both sides of the shop.
+function sampleDigitalHistory(now, digital) {
+  const out = { orders: [], events: [] };
+  const byTitle = t => digital.find(x => x.title.startsWith(t));
+  const rand = () => 0.4;
+  [['Antique appraisal', 3, 'Priya'], ['Antique appraisal', 11, 'Tom'], ['Guide: cleaning', 6, 'Mei'], ['Guide: cleaning', 15, 'Ana'],
+   ['Chess lesson', 2, 'Ravi'], ['Opening repertoire', 4, 'Chen'], ['Starfall Online: Ember', 5, 'Lucas']].forEach(([t, daysAgo, name], i) => {
+    const it = byTitle(t);
+    const at = now - daysAgo * DAY;
+    const slot = it.digital === 'session' ? new Date(new Date(at).setHours(14, 0, 0, 0)).getTime() : null;
+    let o = createOrder({ id: 'G-' + (101 + i), sellerId: it.sellerId, items: [it], buyer: { name }, fulfilment: 'digital', payment: 'online',
+      slot, now: at - DAY, rand, checkMinimum: false });
+    o = transition(o, 'deliver', 'seller', (slot || at - DAY / 2) + 3600e3, { note: it.digital === 'session' ? '' : it.digital === 'download' ? 'Download link sent' : 'Traded in game to ' + name });
+    o = transition(o, 'confirm', 'buyer', at + 3600e3 * 6);
+    out.orders.push(o);
+    for (let v = 0; v < 6; v++) out.events.push({ itemId: it.id, kind: 'view', who: 'guest', at: at - (v + 1) * 5 * 3600e3 });
+  });
+  // a session held yesterday afternoon, waiting to be marked done
+  const ap = byTitle('Antique appraisal');
+  const y = new Date(now - DAY); y.setHours(14, 0, 0, 0);
+  out.orders.push(createOrder({ id: 'G-120', sellerId: 's1', items: [ap], buyer: { name: 'Jordan' }, fulfilment: 'digital', payment: 'online',
+    slot: y.getTime(), now: now - 3 * DAY, rand, checkMinimum: false }));
+  return out;
+}
 const MEET_DEFAULT = 'Public library entrance';
 
-if (typeof module !== 'undefined') module.exports = { sampleItems, artSvg, SAMPLE_ART, SAMPLE_SELLERS };
+if (typeof module !== 'undefined') module.exports = { sampleItems, artSvg, SAMPLE_ART, SAMPLE_SELLERS, sampleDigital };

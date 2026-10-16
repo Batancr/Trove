@@ -23,6 +23,10 @@ const CONFIG = {
   ],
   localDeliveryFee: 800,
   taxPct: 0,                      // GST/HST off while under the small supplier threshold (verify with the CRA)
+  // Trove Digital: services, downloads and game items
+  digitalDeliverDays: 2,          // downloads and game items must be delivered within this long, or the buyer is refunded
+  sessionDoneDays: 2,             // a session must be marked done within this long after its time, or the buyer is refunded
+  digitalCheckDays: 2,            // after delivery or the session, the buyer has this long to report a problem
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -80,7 +84,16 @@ function spareSmallSlots(items, cfg = CONFIG) {
   return packBoxes(items, cfg).reduce((s, b) => s + (b.id === 'large' ? 0 : b.fits - b.items), 0);
 }
 
-// fulfilment: 'ship' | 'meetup' | 'delivery'; payment: 'online' | 'at_handoff'
+// Trove Digital: what kinds of things can be sold online, and the types they're grouped under.
+const DIGITAL_KINDS = {
+  session: { label: 'Session', how: 'Booked for a time, held online by video call or chat' },
+  download: { label: 'Download', how: 'A file or link, delivered after payment' },
+  ingame: { label: 'Game item', how: 'Handed over inside the game' },
+};
+const DIGITAL_CATEGORIES = ['Coaching and lessons', 'Expert advice', 'Creative services', 'Downloads', 'Game items'];
+const isDigital = it => !!(it && it.digital);
+
+// fulfilment: 'ship' | 'meetup' | 'delivery' | 'digital'; payment: 'online' | 'at_handoff'
 function cartTotals(items, fulfilment, payment, cfg = CONFIG) {
   const subtotal = items.reduce((s, it) => s + it.price * (it.qty || 1), 0);
   const shipping = fulfilment === 'ship' ? shippingFor(items, cfg)
@@ -90,6 +103,7 @@ function cartTotals(items, fulfilment, payment, cfg = CONFIG) {
   const problems = [];
   if (!items.length) problems.push('Your cart is empty.');
   if (payment === 'at_handoff' && fulfilment === 'ship') problems.push('Shipped orders are paid online.');
+  if (payment === 'at_handoff' && fulfilment === 'digital') problems.push('Digital orders are paid online.');
   if (payment === 'online' && total < cfg.minOnlineOrder) {
     problems.push(`Card orders start at ${fmtMoney(cfg.minOnlineOrder)}. Add another item, or choose a meetup and pay at the handoff.`);
   }
@@ -154,6 +168,7 @@ const ACTIONS = {
   confirm:         [['delivered'], ['buyer'], 'released'],
   report:          [['delivered', 'shipped'], ['buyer'], 'problem'],
   handoff:         [['paid_held', 'reserved'], ['seller'], null],   // released or completed, see transition()
+  deliver:         [['paid_held'], ['seller', 'system'], 'delivered'],   // digital: file sent, item handed over in game, or session held
   cancel:          [['paid_held', 'reserved'], ['seller', 'buyer'], null],
   resolve_release: [['problem'], ['seller', 'admin'], 'released'],
   resolve_refund:  [['problem'], ['seller', 'admin'], 'refunded'],
@@ -169,21 +184,23 @@ function makeHandoffCode(rand = Math.random) {
   return s;
 }
 
-function createOrder({ id, sellerId, items, buyer, fulfilment, payment, meetup, address, now, rand = Math.random, checkMinimum = true }, cfg = CONFIG) {
+function createOrder({ id, sellerId, items, buyer, fulfilment, payment, meetup, address, slot, now, rand = Math.random, checkMinimum = true }, cfg = CONFIG) {
   const t = cartTotals(items, fulfilment, payment, checkMinimum ? cfg : { ...cfg, minOnlineOrder: 0 });
   if (!t.ok) throw new Error(t.problems[0]);
   const online = payment === 'online';
   const order = {
     id, sellerId: sellerId || null, buyer, fulfilment, payment,
-    items: items.map(it => ({ id: it.id, title: it.title, price: it.price, qty: it.qty || 1, size: it.size, cost: it.cost || 0 })),
+    items: items.map(it => ({ id: it.id, title: it.title, price: it.price, qty: it.qty || 1, size: it.size, cost: it.cost || 0, ...(it.digital ? { digital: it.digital } : {}) })),
     subtotal: t.subtotal, shipping: t.shipping, tax: t.tax, total: t.total,
     cardFee: online ? cardFee(t.total, cfg) : 0,
     meetup: meetup || null, address: address || null,
-    handoffCode: fulfilment === 'ship' ? null : makeHandoffCode(rand),
+    handoffCode: fulfilment === 'ship' || fulfilment === 'digital' ? null : makeHandoffCode(rand),
+    digital: fulfilment === 'digital' ? { kind: items[0].digital, at: slot || null, game: items[0].game || null, delivery: null } : null,
     tracking: null, packPhoto: null, problem: null, labelCost: 0,
     state: online ? 'paid_held' : 'reserved',
     createdAt: now,
-    shipBy: online && fulfilment === 'ship' ? now + cfg.shipByDays * DAY : null,
+    shipBy: online && fulfilment === 'ship' ? now + cfg.shipByDays * DAY
+      : fulfilment === 'digital' ? (slot ? slot + cfg.sessionDoneDays * DAY : now + cfg.digitalDeliverDays * DAY) : null,
     deliveredAt: null, closedAt: null,
     log: [{ at: now, by: 'buyer', action: online ? 'paid' : 'reserved', state: online ? 'paid_held' : 'reserved' }],
   };
@@ -194,7 +211,8 @@ function canDo(order, action, who) {
   const a = ACTIONS[action];
   if (!a) return false;
   if (!a[0].includes(order.state) || !a[1].includes(who)) return false;
-  if (action === 'handoff' && order.fulfilment === 'ship') return false;
+  if (action === 'handoff' && ['ship', 'digital'].includes(order.fulfilment)) return false;
+  if (action === 'deliver' && order.fulfilment !== 'digital') return false;
   if (action === 'ship' && order.fulfilment !== 'ship') return false;
   return true;
 }
@@ -216,6 +234,12 @@ function transition(order, action, who, now, data = {}) {
     to = order.payment === 'online' ? 'released' : 'completed';
   }
   if (action === 'cancel') to = order.payment === 'online' ? 'refunded' : 'cancelled';
+  if (action === 'deliver') {
+    const kind = order.digital && order.digital.kind;
+    if (kind !== 'session' && !String(data.note || '').trim()) throw new Error(kind === 'download' ? 'Add the download link or file.' : 'Say how and when you handed it over in the game.');
+    if (kind === 'session' && order.digital.at && now < order.digital.at) throw new Error("The session hasn't happened yet.");
+    o.digital = { ...order.digital, delivery: { note: String(data.note || '').trim(), at: now } };
+  }
   if (action === 'report') {
     if (!data.reason) throw new Error('Please say what went wrong.');
     o.problem = { reason: data.reason, at: now };
@@ -232,7 +256,8 @@ function sweep(order, now, cfg = CONFIG) {
   if (order.state === 'paid_held' && order.shipBy && now > order.shipBy) {
     return transition(order, 'auto_refund', 'system', now, { note: 'Not shipped by the deadline' });
   }
-  if (order.state === 'delivered' && now > order.deliveredAt + cfg.checkWindowDays * DAY) {
+  const checkDays = order.fulfilment === 'digital' ? cfg.digitalCheckDays : cfg.checkWindowDays;
+  if (order.state === 'delivered' && now > order.deliveredAt + checkDays * DAY) {
     return transition(order, 'auto_release', 'system', now, { note: 'Check window passed' });
   }
   if (order.state === 'shipped') {
@@ -297,6 +322,7 @@ const NOTES = {
   paid:           { buyer: ['essential', 'Order confirmed. Your money is held until the item arrives.'], seller: ['essential', 'New order. Ship it by the deadline to get paid.'] },
   reserved:       { buyer: ['essential', 'Item reserved. Bring your handoff code to the meetup.'], seller: ['essential', 'Item reserved for a meetup. Pay is collected at the handoff.'] },
   ship:           { buyer: ['essential', 'Shipped. Track it from your order page.'] },
+  deliver:        { buyer: ['essential', 'Delivered. Check it, then tap "Got it" or report a problem.'], seller: ['step', 'Marked as delivered. Payment releases after the buyer\'s check window.'] },
   delivered_scan: { buyer: ['essential', 'Delivered. Check it over, then tap "Got it" or report a problem.'], seller: ['step', 'Delivered. Payment releases after the buyer\'s check window.'] },
   confirm:        { seller: ['essential', 'The buyer confirmed. Payment released.'], buyer: ['step', 'Thanks! The seller has been paid.'] },
   report:         { seller: ['essential', 'The buyer reported a problem. Payment stays held while you sort it out.'], buyer: ['step', 'We\'ve told the seller. Your money stays held.'] },
@@ -343,11 +369,12 @@ function parseQuery(q) {
 }
 
 function itemText(it) {
-  return [it.title, it.description, it.category, it.material, it.maker, it.era].join(' ').toLowerCase();
+  return [it.title, it.description, it.category, it.material, it.maker, it.era, it.game].join(' ').toLowerCase();
 }
 
 function matches(it, f) {
   if (it.status && it.status !== 'active') return false;
+  if (f.digital != null && !!it.digital !== f.digital) return false;
   if (f.maxPrice != null && it.price > f.maxPrice) return false;
   if (f.minPrice != null && it.price < f.minPrice) return false;
   if (f.local && !it.meetup) return false;
@@ -381,6 +408,30 @@ function search(items, query, extra = {}, sort = 'best') {
 }
 
 // ---------- listings ----------
+
+// A digital listing needs different details from a physical one: no condition, box or measurements.
+function validateDigital(it) {
+  const errs = [];
+  if (!it.title || it.title.trim().length < 3) errs.push('Give it a title.');
+  if (!(it.price > 0)) errs.push('Set a price.');
+  if (!DIGITAL_KINDS[it.digital]) errs.push('Choose what kind of thing it is.');
+  if (!it.description || it.description.trim().length < 10) errs.push('Say what the buyer gets.');
+  if (it.digital === 'session') {
+    if (!(it.durationMin > 0)) errs.push('Set how long a session is.');
+    if (!(it.slots && it.slots.length)) errs.push('Add at least one time buyers can book.');
+  }
+  if (it.digital === 'ingame') {
+    if (!it.game || !it.game.trim()) errs.push('Name the game.');
+    if (!it.gameAllowsTrade) errs.push("Confirm the game's rules allow selling this item for money.");
+  }
+  return errs;
+}
+
+// Session times still free to book: in the future and not already booked.
+function openSlots(item, orders, now) {
+  const taken = new Set(orders.filter(o => o.digital && o.digital.at && !['refunded', 'cancelled'].includes(o.state) && o.items.some(l => l.id === item.id)).map(o => o.digital.at));
+  return (item.slots || []).filter(t => t > now && !taken.has(t)).sort((a, b) => a - b);
+}
 
 const CONDITIONS = [
   ['new', 'New', 'Unused, in its box or with tags'],
@@ -586,6 +637,7 @@ if (typeof module !== 'undefined') {
     cents, fmtMoney, cardFee, packBoxes, shippingFor, spareSmallSlots, cartTotals, splitBySeller, cartTotalsAll, sellerStats,
     makeHandoffCode, createOrder, canDo, transition, sweep, moneySteps, payoutFor, moneySummary,
     notificationsFor, parseQuery, search, validateListing, ordersCsv, csvCell,
+    DIGITAL_KINDS, DIGITAL_CATEGORIES, isDigital, validateDigital, openSlots,
     weeklySales, interestByItem, scheduleByDay, groupByCategory,
     periodCompare, salesByDay, timeToSell, salesFunnel, stockAge, AGE_BANDS, profitSteps, markupByCategory, meetupTimes, TIME_BANDS,
   };

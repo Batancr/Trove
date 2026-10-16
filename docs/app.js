@@ -172,6 +172,7 @@ function applyLook() {
 
 const LOG_TEXT = {
   paid: () => 'Paid. The money is held until the item reaches you.',
+  deliver: (o, e) => o.digital && o.digital.kind === 'session' ? 'Session held. The buyer has 2 days to report a problem.' : `Delivered${e.note ? ': ' + esc(e.note) : ''}. The buyer has 2 days to check it.`,
   reserved: () => 'Reserved. Payment happens in person.',
   ship: (o) => `${tr('Shipped. Tracking')} ${esc(o.tracking)}`,
   delivered_scan: () => 'Delivered.',
@@ -248,6 +249,7 @@ function moneyBar(o) {
 }
 
 function itemCard(it) {
+  if (isDigital(it)) return digitalCard(it);
   return `<a class="card" href="#/item/${it.id}">
     <div class="ph">${photo(it)}</div>
     <h3>${esc(it.title)}</h3>
@@ -257,6 +259,18 @@ function itemCard(it) {
 }
 
 // ---------- buyer pages ----------
+
+// The two halves of Trove point at each other: a Digital shelf on the home page, and digital matches on searches.
+function digitalShelf() {
+  const list = S().items.filter(i => isDigital(i) && i.status === 'active').sort((a, b) => b.listedAt - a.listedAt).slice(0, 4);
+  if (!list.length) return '';
+  return `<section class="shelf dshelf"><div class="shelf-head"><h2 class="sub"><span class="dtag">${tr('New')}</span> Trove Digital</h2>
+    <a href="#/digital"><span>${tr('Lessons, advice and downloads')}</span> →</a></div><div class="grid">${list.map(digitalCard).join('')}</div></section>`;
+}
+function digitalHint(q) {
+  const n = search(S().items, q, { digital: true }).results.length;
+  return n ? `<p class="notice ok"><a href="#/digital?q=${encodeURIComponent(q)}"><span>${n}</span> <span>${tr(n === 1 ? 'match on Trove Digital' : 'matches on Trove Digital')}</span> →</a></p>` : '';
+}
 
 const PRICES = [['u10', 'Under $10', null, 999], ['10-50', '$10 to $50', 1000, 4999], ['50-100', '$50 to $100', 5000, 9999], ['100+', '$100 and up', 10000, null]];
 
@@ -303,7 +317,7 @@ function renderBrowse(params) {
   const { tour, ...p } = params;
   if (tour && st.prefs.heroHidden) { st.prefs.heroHidden = false; save(); }
   const q = p.q || '';
-  const extra = {};
+  const extra = { digital: false };
   if (p.cat) extra.category = p.cat;
   if (p.local) extra.local = true;
   const price = PRICES.find(x => x[0] === p.price);
@@ -343,6 +357,7 @@ function renderBrowse(params) {
       <label class="sr" for="sort">Sort</label>
       <select id="sort" name="sort">${opt('', q ? 'Best match' : 'Newest')}${opt('low', 'Lowest price')}${opt('high', 'Highest price')}</select>
     </form>`}
+    ${home ? digitalShelf() : q ? digitalHint(q) : ''}
     ${recent.length ? `<h2 class="sub">Recently viewed</h2><div class="strip">${recent.map(it => `<a href="#/item/${it.id}"><span class="ph">${photo(it)}</span><b>${money(it.price)}</b></a>`).join('')}</div>` : ''}
     ${sections && results.length ? sections.map(g => `<section class="shelf"><div class="shelf-head"><h2 class="sub">${esc(g.category)}</h2>
         <a href="${link({ cat: g.category })}"><span>${tr('See all')}</span> ${g.items.length}</a></div>
@@ -357,6 +372,7 @@ function renderBrowse(params) {
 function renderItem(id) {
   const it = itemById(id);
   if (!it) { app.innerHTML = '<h1>Item not found</h1><p><a href="#/">Back</a></p>'; return; }
+  if (isDigital(it)) { renderDigitalItem(it); return; }
   const st = S();
   const seller = sellerById(it.sellerId);
   const stats = sellerStats(st.orders, seller.id);
@@ -399,6 +415,167 @@ function renderItem(id) {
         </form>
       </div>
     </div>`;
+}
+
+// ---------- Trove Digital: services, downloads and game items ----------
+// Same accounts, cart-free checkout, same dashboard. Money is held until the session happens or the buyer has the file or item.
+
+const kindLabel = it => it.digital === 'session' ? `${tr('Session')} · ${it.durationMin} min` : tr(DIGITAL_KINDS[it.digital].label);
+
+function digitalCard(it) {
+  const seller = sellerById(it.sellerId);
+  return `<a class="card dcard" href="#/item/${it.id}">
+    <div class="ph">${photo(it)}<span class="kind k-${it.digital}">${esc(kindLabel(it))}</span></div>
+    <h3>${esc(it.title)}</h3>
+    <div class="price">${money(it.price)}</div>
+    <div class="meta">${esc(seller ? seller.name : '')}</div>
+  </a>`;
+}
+
+function renderDigital(params) {
+  const st = S();
+  const q = params.q || '', cat = params.cat || '';
+  const extra = { digital: true };
+  if (cat) extra.category = cat;
+  const { results } = search(st.items, q, extra, q ? 'best' : 'newest');
+  const home = !q && !cat;
+  const compact = st.prefs.density === 'compact';
+  const grid = list => `<div class="grid${compact ? ' compact' : ''}">${list.map(digitalCard).join('')}</div>`;
+  app.innerHTML = `
+    <section class="dhero">
+      <div><p class="eyebrow">Trove Digital</p>
+        <h1>Lessons, advice, downloads and game items.</h1>
+        <p class="lede">Still no fees. Your money is held until the session happens or you have what you paid for.</p></div>
+      <form class="dsearch" data-form="dsearch" role="search"><label class="sr" for="dq">Search Trove Digital</label>
+        <input id="dq" name="q" type="search" placeholder="Search lessons, guides, game items" value="${esc(q)}"><button type="submit">Search</button></form>
+      <nav class="cats" aria-label="Types"><a href="#/digital" ${home ? 'aria-current="true"' : ''}>All</a>${DIGITAL_CATEGORIES.map(c => `<a href="#/digital?cat=${encodeURIComponent(c)}" ${cat === c ? 'aria-current="true"' : ''}>${esc(c)}</a>`).join('')}</nav>
+    </section>
+    ${home ? `<div class="dhow">
+      <div><b>${tr('Sessions')}</b><span>${tr('Book a time. The seller is paid after the session.')}</span></div>
+      <div><b>${tr('Downloads')}</b><span>${tr('Delivered after you pay, with 2 days to check it.')}</span></div>
+      <div><b>${tr('Game items')}</b><span>${tr('Traded in the game. Only for games whose rules allow it.')}</span></div></div>` : ''}
+    ${q ? `<p class="muted"><span>${results.length}</span> <span>${tr('results for')}</span> “${esc(q)}”</p>` : ''}
+    ${results.length ? (home ? `<section class="shelf"><div class="shelf-head"><h2 class="sub">${tr('Newest')}</h2></div>${grid(results)}</section>` : grid(results))
+      : `<div class="panel" style="max-width:520px"><h2>Nothing yet</h2><p>Try another word, or browse all of Trove Digital.</p><a class="btn" href="#/digital">See everything</a></div>`}
+    <section class="panel dsell"><div><h2>Sell what you know</h2><p class="muted">Lessons, appraisals, guides and game items go on the same shop and dashboard as everything else you sell.</p></div>
+      <a class="btn" href="#/sell/new?kind=session">List a service</a></section>`;
+}
+
+// Session times grouped by day, as radio buttons.
+function slotPicker(it) {
+  const slots = openSlots(it, S().orders, Store.now()).slice(0, 18);
+  if (!slots.length) return `<p class="notice">${tr('No times free right now. Ask the seller below.')}</p>`;
+  const byDay = {};
+  slots.forEach(t => { const k = dayKey(new Date(t)); (byDay[k] = byDay[k] || []).push(t); });
+  return `<fieldset class="slots"><legend><b>${tr('Pick a time')}</b></legend>${Object.entries(byDay).map(([k, list]) => {
+    const [y, m, d] = k.split('-').map(Number);
+    return `<div class="sday"><span>${esc(new Date(y, m - 1, d).toLocaleDateString(lang() === 'zh' ? 'zh-CN' : 'en-CA', { weekday: 'short', month: 'short', day: 'numeric' }))}</span>
+      ${list.map((t, i) => `<label class="slotbtn"><input type="radio" name="slot" value="${t}" ${t === slots[0] ? 'checked' : ''} required><span>${esc(timeOnly(t))}</span></label>`).join('')}</div>`;
+  }).join('')}</fieldset>`;
+}
+
+function renderDigitalItem(it) {
+  const st = S();
+  const seller = sellerById(it.sellerId);
+  const stats = sellerStats(st.orders, seller.id);
+  const qa = it.questions || [];
+  const who = st.me;
+  const others = st.items.filter(x => x.sellerId === seller.id && x.id !== it.id && x.status === 'active').slice(0, 4);
+  const promise = { session: "Paid now, held until the session is over. If it doesn't happen, you get it back.",
+    download: 'Paid now, held for 2 days after delivery so you can check it.',
+    ingame: 'Paid now, held until you confirm the item arrived in your game.' }[it.digital];
+  app.innerHTML = `
+    <p class="crumb"><a href="#/digital">Trove Digital</a> / <a href="#/digital?cat=${encodeURIComponent(it.category)}">${esc(it.category)}</a></p>
+    <div class="cols">
+      <div class="gallery"><div class="main-ph" id="mainPh">${photo(it)}</div></div>
+      <div>
+        <h1>${esc(it.title)}</h1>
+        <div class="bigprice">${money(it.price)}</div>
+        <p><span class="chip">${esc(kindLabel(it))}</span>${it.game ? ` <span class="muted">${esc(it.game)}</span>` : ''}${it.delivers ? ` <span class="muted">${esc(it.delivers)}</span>` : ''}</p>
+        <p>${esc(it.description)}</p>
+        ${it.status === 'active' ? `<form data-form="buyDigital" data-id="${it.id}" class="buybox">
+          ${it.digital === 'session' ? slotPicker(it) : ''}
+          ${it.digital === 'ingame' ? `<label class="f"><span>Your character name</span><small>So the seller knows who to trade with.</small><input name="character" required maxlength="40"></label>` : ''}
+          <div class="row">
+            <label class="f"><span>Name</span><input name="name" required autocomplete="name" value="${esc(who.name)}"></label>
+            <label class="f"><span>Email</span><input name="email" type="email" required autocomplete="email" value="${esc(who.email)}"></label>
+          </div>
+          <button type="submit">${tr(it.digital === 'session' ? 'Book and pay' : 'Buy now')} ${money(it.price)}</button>
+          <p class="protect"><span>${tr(promise)}</span> <span class="muted">${tr('Demo: nothing is charged.')}</span></p>
+        </form>` : `<p class="notice">${tr('Not available right now.')}</p>`}
+        <a class="seller" href="#/seller/${seller.id}">${avatar(seller)}
+          <span><b>${esc(seller.name)}</b><br><span class="muted">${esc(seller.city)} · ${stats.sales ? `${stats.sales} <span>${tr(stats.sales > 1 ? 'sales' : 'sale')}</span>` : `<span>${tr('New seller')}</span>`}</span></span></a>
+        <h2>Questions</h2>
+        ${qa.map(x => `<p><b>${esc(x.q)}</b><br>${x.a ? esc(x.a) : `<span class="muted">${tr('Waiting for an answer.')}</span>`}</p>`).join('')}
+        <form data-form="ask" data-id="${it.id}" class="row">
+          <label class="sr" for="askq">Your question</label>
+          <input id="askq" name="q" required maxlength="300" placeholder="Ask the seller" style="flex:1;min-width:180px">
+          <button type="submit" class="ghost">Ask</button>
+        </form>
+      </div>
+    </div>
+    ${others.length ? `<h2 class="sub" style="margin-top:28px"><span>${tr('More from')}</span> ${esc(seller.name)}</h2>
+      <div class="grid">${others.map(x => isDigital(x) ? digitalCard(x) : itemCard(x)).join('')}</div>` : ''}`;
+}
+
+function buyDigital(form) {
+  const st = S();
+  const it = itemById(form.dataset.id);
+  const fd = new FormData(form);
+  st.me = { name: fd.get('name').trim(), email: fd.get('email').trim() };
+  const slot = fd.get('slot') ? Number(fd.get('slot')) : null;
+  if (it.digital === 'session' && !openSlots(it, st.orders, Store.now()).includes(slot)) { toast('That time was just taken. Pick another.'); route(); return; }
+  let order;
+  try {
+    order = createOrder({ id: Store.nextOrderId(), sellerId: it.sellerId, items: [{ ...it, qty: 1 }],
+      buyer: { ...st.me, character: (fd.get('character') || '').trim() || undefined }, fulfilment: 'digital', payment: 'online',
+      slot, now: Store.now(), checkMinimum: false });
+  } catch (e) { toast(e.message); return; }
+  st.orders.unshift(order);
+  notify('paid', order);
+  // Downloads with a file attached are delivered straight away
+  if (it.digital === 'download' && it.instant) {
+    const i = st.orders.indexOf(order);
+    st.orders[i] = transition(order, 'deliver', 'system', Store.now(), { note: it.instant });
+    notify('deliver', st.orders[i]);
+  }
+  save();
+  location.hash = '#/order/' + order.id;
+  toast(it.digital === 'session' ? 'Booked. Your money is held until the session is over.' : 'Paid. Your money is held until you have it.');
+}
+
+// What the buyer sees on a digital order: the session time, the file, or the in-game handover.
+function digitalPanel(o) {
+  const d = o.digital, it = itemById(o.items[0].id) || {};
+  if (d.kind === 'session') {
+    return `<div class="panel dpanel" style="margin-bottom:20px"><h2>${tr('Your session')}</h2>
+      <p class="code" style="font-size:1.4rem;letter-spacing:0">${esc(fmtDate(d.at))}</p>
+      <p style="margin:0">${it.durationMin ? `${it.durationMin} min · ` : ''}<span>${tr('The seller sends a video call link before it starts.')}</span></p></div>`;
+  }
+  if (d.kind === 'download') {
+    return `<div class="panel dpanel" style="margin-bottom:20px"><h2>${tr('Your download')}</h2>
+      ${d.delivery ? `<p class="dfile">${icon('code', 22)} <b>${esc(d.delivery.note)}</b></p><p class="hint">${tr('Demo: a real file link goes here.')}</p>`
+        : `<p>${tr('The seller sends it within 2 days, or you are refunded.')}</p>`}</div>`;
+  }
+  return `<div class="panel dpanel" style="margin-bottom:20px"><h2>${tr('Your game item')}</h2>
+    <p>${esc(d.game || '')}${o.buyer.character ? ` · <span>${tr('Character')}</span> <b>${esc(o.buyer.character)}</b>` : ''}</p>
+    ${d.delivery ? `<p class="muted">${esc(d.delivery.note)}</p>` : `<p>${tr('The seller trades it to your character in the game, within 2 days.')}</p>`}</div>`;
+}
+
+// Seller side: what to do next on a digital order.
+function digitalTodo(o) {
+  const d = o.digital, who = esc(o.buyer.name || o.buyer.email || '');
+  if (d.kind === 'session') {
+    const started = Store.now() >= d.at;
+    return `<p>${who} · ${esc(fmtDate(d.at))}</p>
+      <p><button type="button" data-act="sessionDone" data-id="${o.id}" ${started ? '' : 'disabled'}>Mark session done</button>
+      ${started ? '' : `<span class="hint">${tr('You can mark it done once it has started.')}</span>`}</p>`;
+  }
+  const label = d.kind === 'download' ? 'Download link or file name' : 'How you handed it over';
+  return `<p>${who}${o.buyer.character ? ` · <span>${tr('Character')}</span> <b>${esc(o.buyer.character)}</b>` : ''} · <span>${tr('Deliver by')}</span> ${fmtDate(o.shipBy)}</p>
+    <form data-form="deliver" data-id="${o.id}" class="row" style="align-items:flex-end">
+      <label class="f" style="margin:0;flex:1;min-width:200px"><span>${label}</span><input name="note" required maxlength="200"></label>
+      <button type="submit">Mark delivered</button></form>`;
 }
 
 function renderSeller(id) {
@@ -559,11 +736,12 @@ function renderOrder(id) {
   app.innerHTML = `
     <h1><span>${tr('Order')}</span> ${esc(o.id)}</h1>
     <p><span class="chip ${o.state === 'problem' ? 'red' : ''}">${esc(STATES[o.state].label)}</span>
-      ${o.shipBy && o.state === 'paid_held' ? `<span class="muted"><span>${tr('Ships by')}</span> ${fmtDate(o.shipBy)}<span>${tr(", or you're refunded.")}</span></span>` : ''}
-      ${o.state === 'delivered' ? `<span class="muted"><span>${tr('Money releases')}</span> ${fmtDate(o.deliveredAt + CONFIG.checkWindowDays * DAY)}<span>${tr(' unless you report a problem.')}</span></span>` : ''}</p>
+      ${o.shipBy && o.state === 'paid_held' && !o.digital ? `<span class="muted"><span>${tr('Ships by')}</span> ${fmtDate(o.shipBy)}<span>${tr(", or you're refunded.")}</span></span>` : ''}
+      ${o.state === 'delivered' ? `<span class="muted"><span>${tr('Money releases')}</span> ${fmtDate(o.deliveredAt + (o.digital ? CONFIG.digitalCheckDays : CONFIG.checkWindowDays) * DAY)}<span>${tr(' unless you report a problem.')}</span></span>` : ''}</p>
     ${moneyBar(o)}
     <div class="cols">
       <div>
+        ${o.digital ? digitalPanel(o) : ''}
         ${o.handoffCode && ['paid_held', 'reserved'].includes(o.state) ? `<div class="panel" style="margin-bottom:20px">
           <h2>Handoff code</h2>
           <div class="code" aria-label="${o.handoffCode.split('').join(' ')}">${o.handoffCode}</div>
@@ -583,7 +761,7 @@ function renderOrder(id) {
       <div class="panel" style="align-self:start">
         <a class="seller" href="#/seller/${seller.id}" style="margin-top:0;border-top:0">${avatar(seller)}<b>${esc(seller.name)}</b></a>
         ${o.items.map(i => `<p style="margin:0 0 8px"><a href="#/item/${i.id}">${esc(i.title)}</a><br>${money(i.price)}</p>`).join('')}
-        <p>${o.shipping ? `${tr('Delivery')} ${money(o.shipping)}` : tr('Free pickup')}<br><b>${tr('Total')} ${money(o.total)}</b><br>
+        <p>${o.digital ? esc(tr(DIGITAL_KINDS[o.digital.kind].label)) : o.shipping ? `${tr('Delivery')} ${money(o.shipping)}` : tr('Free pickup')}<br><b>${tr('Total')} ${money(o.total)}</b><br>
         <span class="muted">${o.payment === 'online' ? 'Paid online, protected' : 'Paying in person'}</span></p>
         ${o.tracking ? `<p><span>${tr('Tracking')}</span> <b>${esc(o.tracking)}</b></p>` : ''}
         ${o.packPhoto ? `<p><img class="packimg" src="${o.packPhoto}" alt="Seller's photo of the item being packed"><br><span class="hint">Packed by the seller</span></p>` : ''}
@@ -713,7 +891,8 @@ function dashHead(cur, actions = '') {
   const mine = st.orders.filter(o => o.sellerId === sid);
   const n = mine.filter(o => ['paid_held', 'reserved', 'problem'].includes(o.state)).length;
   const unanswered = unansweredCount();
-  const meets = scheduleByDay(st.orders, sid, Store.now()).reduce((s, d) => s + d.orders.length, 0);
+  const meets = scheduleByDay(st.orders, sid, Store.now()).reduce((s, d) => s + d.orders.length, 0)
+    + mine.filter(o => o.state === 'paid_held' && o.digital && o.digital.at && o.digital.at >= Store.now() - DAY).length;
   const drafts = st.items.filter(i => i.sellerId === sid && i.status === 'draft').length;
   const link = (id, c) => `<a href="#/dashboard/${id}" ${cur === id ? 'aria-current="page"' : ''}>${sideIcon(id)}<span>${DASH_PAGES[id][0]}</span>${c ? `<span class="count">${c}</span>` : ''}</a>`;
   const [title, desc] = DASH_PAGES[cur];
@@ -737,7 +916,7 @@ function recentActivity() {
   if (!done.length) return '';
   return `<div class="sechead"><h2>${tr('Recent sales')}</h2><a href="#/dashboard/money">${tr('See all')}</a></div>
     <div class="tablewrap activity"><table><tbody>${done.map(o => { const p = payoutFor(o); return `<tr><td class="muted">${esc(shortDate(o.closedAt))}</td>
-      <td>${o.items.map(i => esc(i.title)).join(', ')}</td><td><span class="chip">${esc(tr(o.fulfilment === 'ship' ? 'Shipped' : 'Meetup'))}</span></td>
+      <td>${o.items.map(i => esc(i.title)).join(', ')}</td><td><span class="chip">${esc(tr(o.digital ? DIGITAL_KINDS[o.digital.kind].label : o.fulfilment === 'ship' ? 'Shipped' : 'Meetup'))}</span></td>
       <td class="num">${money(o.subtotal)}</td><td class="num muted">+${money(p.profit)} ${tr('profit')}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 
@@ -771,7 +950,9 @@ function todoCard(o) {
   const items = o.items.map(i => esc(i.title)).join(', ');
   const who = esc(o.buyer.name || o.buyer.email);
   let body = '';
-  if (o.state === 'paid_held' && o.fulfilment === 'ship') {
+  if (o.digital && o.state === 'paid_held') {
+    body = digitalTodo(o);
+  } else if (o.state === 'paid_held' && o.fulfilment === 'ship') {
     body = `<p><b><span>${tr('Ship by')}</span> ${fmtDate(o.shipBy)}</b> · ${who}<br><span class="muted" style="white-space:pre-line">${esc(o.address)}</span></p>
       <form data-form="ship" data-id="${o.id}">
         <div class="row">
@@ -798,7 +979,7 @@ function todoCard(o) {
       <div class="row"><button type="button" data-act="resolveRelease" data-id="${o.id}">Sorted, release money</button>
       <button type="button" class="warn" data-act="resolveRefund" data-id="${o.id}">Refund buyer</button></div>`;
   } else if (o.state === 'delivered') {
-    body = `<p class="muted"><span>${tr('Money releases')}</span> ${fmtDate(o.deliveredAt + CONFIG.checkWindowDays * DAY)}</p>`;
+    body = `<p class="muted"><span>${tr('Money releases')}</span> ${fmtDate(o.deliveredAt + (o.digital ? CONFIG.digitalCheckDays : CONFIG.checkWindowDays) * DAY)}</p>`;
   }
   return `<article class="todo"><header><b>${items}</b><span class="chip ${o.state === 'problem' ? 'red' : ''}">${esc(STATES[o.state].label)}</span></header>${body}
     ${['paid_held', 'reserved'].includes(o.state) ? `<p style="margin-bottom:0"><button type="button" class="ghost small" data-act="cancelSeller" data-id="${o.id}">Can't fulfil, cancel</button></p>` : ''}</article>`;
@@ -832,6 +1013,8 @@ function renderDashSchedule() {
   const st = S(), now = Store.now(), loc = lang() === 'zh' ? 'zh-CN' : 'en-CA';
   const byDay = {};
   scheduleByDay(st.orders, st.actingSeller, now).forEach(d => d.orders.forEach(o => (byDay[d.day] = byDay[d.day] || []).push({ at: o.meetup.at, o, kind: 'meet' })));
+  myOrders().filter(o => o.state === 'paid_held' && o.digital && o.digital.at && o.digital.at >= now - DAY)
+    .forEach(o => { const k = dayKey(new Date(o.digital.at)); (byDay[k] = byDay[k] || []).push({ at: o.digital.at, o, kind: 'session' }); });
   myOrders().filter(o => o.state === 'paid_held' && o.fulfilment === 'ship' && o.shipBy)
     .forEach(o => { const k = dayKey(new Date(o.shipBy)); (byDay[k] = byDay[k] || []).push({ at: o.shipBy, o, kind: 'ship' }); });
   const today = new Date(now);
@@ -849,8 +1032,8 @@ function renderDashSchedule() {
       ${byDay[k].sort((a, b) => a.at - b.at).map(({ at, o, kind }) => `<a class="todo slot" href="#/dashboard/todo">
         <time>${esc(timeOnly(at))}</time>
         <span><b>${o.items.map(i => esc(i.title)).join(', ')}</b><br>
-        <span class="muted">${kind === 'ship' ? `<span>${tr('Ship by')}</span>` : `${esc(o.buyer.name || o.buyer.email || '')} · ${esc(tr(o.meetup.place))}`}</span></span>
-        <span class="chip ${kind === 'ship' ? 'orange' : ''}">${kind === 'ship' ? tr('Ship') : o.payment === 'online' ? tr('Paid online.') : `${tr('Collect')} ${money(o.total)}`}</span></a>`).join('')}`;
+        <span class="muted">${kind === 'ship' ? `<span>${tr('Ship by')}</span>` : kind === 'session' ? `${esc(o.buyer.name || '')} · <span>${tr('Online session')}</span>` : `${esc(o.buyer.name || o.buyer.email || '')} · ${esc(tr(o.meetup.place))}`}</span></span>
+        <span class="chip ${kind === 'ship' ? 'orange' : ''}">${kind === 'ship' ? tr('Ship') : kind === 'session' ? tr('Session') : o.payment === 'online' ? tr('Paid online.') : `${tr('Collect')} ${money(o.total)}`}</span></a>`).join('')}`;
     }).join('') : '<p class="muted">No meetups booked.</p>'}`;
 }
 
@@ -893,9 +1076,18 @@ function renderListingForm(id) {
   pendingPhotos = (it.photos || []).slice();
   const r = (name, val, title, desc) => `<label class="radio"><input type="radio" name="${name}" value="${val}" ${it[name] === val ? 'checked' : ''}><span><b>${title}</b><span class="muted">${desc}</span></span></label>`;
   const showAge = ['Antiques', 'Collectibles'].includes(it.category) || it.era;
+  const kind = it.digital || (!id && DIGITAL_KINDS[parseHash().params.kind] ? parseHash().params.kind : 'physical');
+  const kindRadio = (v, title, desc) => `<label class="radio"><input type="radio" name="kind" value="${v}" ${kind === v ? 'checked' : ''}><span><b>${title}</b><span class="muted">${desc}</span></span></label>`;
+  const days = it.availDays || [1, 2, 3, 4, 5];
   app.innerHTML = `
     <h1>${id ? (it.status === 'draft' ? 'Finish listing' : 'Edit listing') : 'Sell something'}</h1>
-    <form data-form="listing" data-id="${id || ''}" style="max-width:680px" novalidate>
+    <form data-form="listing" data-id="${id || ''}" data-kind="${kind}" style="max-width:680px" novalidate>
+      <fieldset class="kinds" style="border:0;padding:0;margin:0 0 16px"><legend><b>What are you selling?</b></legend>
+        ${kindRadio('physical', 'A thing', 'Shipped, picked up or dropped off')}
+        ${kindRadio('session', 'A session', 'Lessons, coaching or advice by video call')}
+        ${kindRadio('download', 'A download', 'Guides, templates, files or custom work')}
+        ${kindRadio('ingame', 'A game item', 'Handed over inside a game')}
+      </fieldset>
       <label class="drop" id="dropZone" for="photoInput">
         <input type="file" id="photoInput" name="photos" accept="image/*" multiple>
         <b>Add photos</b><span class="muted">Tap to choose, or drag them here. Show any flaws.</span>
@@ -905,8 +1097,31 @@ function renderListingForm(id) {
       <label class="f"><span>Title</span><input name="title" required maxlength="80" value="${esc(it.title || '')}"></label>
       <div class="row">
         <label class="f"><span>Price ($)</span><input name="price" type="number" min="1" step="0.01" required value="${it.price ? (it.price / 100).toFixed(2) : ''}"></label>
-        <label class="f"><span>Category</span><select name="category" id="catSelect"><option value="" ${it.category ? '' : 'selected'} disabled>${tr('Choose')}</option>${CATEGORIES.map(c => `<option value="${c}" ${it.category === c ? 'selected' : ''}>${tr(c)}</option>`).join('')}</select></label>
+        <label class="f" data-only="digital"><span>Type</span><select name="dcategory">${DIGITAL_CATEGORIES.map(c => `<option value="${c}" ${it.category === c ? 'selected' : ''}>${tr(c)}</option>`).join('')}</select></label>
+        <label class="f" data-only="physical"><span>Category</span><select name="category" id="catSelect"><option value="" ${it.category ? '' : 'selected'} disabled>${tr('Choose')}</option>${CATEGORIES.map(c => `<option value="${c}" ${it.category === c ? 'selected' : ''}>${tr(c)}</option>`).join('')}</select></label>
       </div>
+      <div data-only="digital">
+        <label class="f"><span>What the buyer gets</span><small>What happens, how long it takes, what they need.</small><textarea name="ddescription" rows="3">${esc(it.digital ? it.description || '' : '')}</textarea></label>
+        <div data-only="session">
+          <div class="row">
+            <label class="f"><span>Length (minutes)</span><input name="durationMin" type="number" min="10" step="5" value="${it.durationMin || 30}"></label>
+            <label class="f"><span>Start times</span><small>Hours, e.g. 10, 14, 19</small><input name="hours" value="${esc((it.availHours || [10, 14, 19]).join(', '))}"></label>
+          </div>
+          <fieldset style="border:0;padding:0;margin:0 0 16px"><legend><b>Days you're free</b></legend><div class="row">
+            ${WEEK_ORDER.map(d => `<label class="row" style="gap:4px"><input type="checkbox" name="days" value="${d}" ${days.includes(d) ? 'checked' : ''}> <span>${esc(dayName(d))}</span></label>`).join('')}</div>
+            <small class="hint">Buyers can book these times for the next two weeks.</small></fieldset>
+        </div>
+        <div data-only="download">
+          <label class="f"><span>What's included</span><input name="delivers" placeholder="e.g. PDF, 14 pages" value="${esc(it.delivers || '')}"></label>
+          <label class="f"><span>Send a file automatically (optional)</span><small>Leave empty for custom work you deliver yourself. Demo: type a file name.</small><input name="instant" value="${esc(it.instant || '')}"></label>
+        </div>
+        <div data-only="ingame">
+          <label class="f"><span>Game</span><input name="game" value="${esc(it.game || '')}"></label>
+          <label class="row" style="margin:0 0 6px"><input type="checkbox" name="gameAllowsTrade" ${it.gameAllowsTrade ? 'checked' : ''}> <span>This game's rules allow selling this item for real money</span></label>
+          <p class="hint">Many games don't allow it. Check the game's terms first. Accounts can't be sold on Trove.</p>
+        </div>
+      </div>
+      <div data-only="physical">
       <fieldset style="border:0;padding:0;margin:0 0 16px"><legend><b>Condition</b></legend>${CONDITIONS.map(c => r('condition', c[0], c[1], c[2])).join('')}</fieldset>
       <label class="f"><span>Flaws</span><small>Chips, scratches, missing parts. Or write "None".</small><textarea name="flaws" rows="2">${esc(it.flaws || '')}</textarea></label>
       <label class="f"><span>Size</span><input name="measurements" placeholder="e.g. 21 cm tall, or size M" value="${esc(it.measurements || '')}"></label>
@@ -928,11 +1143,24 @@ function renderListingForm(id) {
       <fieldset style="border:0;padding:0;margin:0 0 12px"><legend><b>Box size</b></legend>${SIZES.map(s => r('size', s[0], s[1], s[2])).join('')}</fieldset>
       <label class="row"><input type="checkbox" name="ships" ${it.ships ? 'checked' : ''}> <span>Can ship</span></label>
       <label class="row" style="margin:6px 0 18px"><input type="checkbox" name="meetup" ${it.meetup ? 'checked' : ''}> <span>Pickup or local drop-off</span></label>
+      </div>
       <div id="formErrors"></div>
       <button type="submit">${id && it.status !== 'draft' ? 'Save' : 'Publish'}</button>
       <p class="hint"><span>${tr('Listing as')}</span> ${esc(me().name)} · <span>${tr('Free to list.')}</span></p>
     </form>`;
   drawPreviews();
+  applyKind(app.querySelector('[data-form=listing]'));
+}
+
+// Shows only the fields that fit what is being sold.
+function applyKind(form) {
+  if (!form) return;
+  const k = (form.querySelector('[name=kind]:checked') || {}).value || 'physical';
+  form.dataset.kind = k;
+  form.querySelectorAll('[data-only]').forEach(el => {
+    const on = el.dataset.only === k || (el.dataset.only === 'digital' && k !== 'physical');
+    el.hidden = !on;
+  });
 }
 
 function drawPreviews() {
@@ -956,6 +1184,8 @@ function saveListing(form) {
   const id = form.dataset.id;
   const fd = new FormData(form);
   const existing = id ? itemById(id) : null;
+  const kind = fd.get('kind') || (existing && existing.digital) || 'physical';
+  if (kind !== 'physical') { saveDigital(form, fd, existing, kind); return; }
   const era = (fd.get('era') || '').trim();
   const year = Number((era.match(/1[6-9]\d\d|20\d\d/) || [])[0]);
   const it = {
@@ -984,6 +1214,34 @@ function saveListing(form) {
   save();
   location.hash = '#/item/' + it.id;
   toast(existing && !wasDraft ? 'Saved.' : 'Listed.');
+}
+
+function saveDigital(form, fd, existing, kind) {
+  const st = S();
+  const days = fd.getAll('days').map(Number);
+  const hours = String(fd.get('hours') || '').split(/[^0-9.]+/).map(Number).filter(h => h >= 0 && h < 24);
+  const now = new Date(Store.now()), slots = [];
+  if (kind === 'session') for (let i = 1; i <= 14; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    if (days.includes(d.getDay())) hours.forEach(h => slots.push(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.round(h % 1 * 60)).getTime()));
+  }
+  const base = existing || { id: 'g' + Date.now(), sellerId: st.actingSeller, listedAt: Store.now(), status: 'active', questions: [], art: kind === 'session' ? 'headphones' : kind === 'download' ? 'book' : 'game', tone: '#efe7da' };
+  const it = { ...base, digital: kind, title: fd.get('title').trim(), price: cents(fd.get('price') || 0), cost: cents(fd.get('cost') || 0), qty: 1,
+    category: fd.get('dcategory'), description: (fd.get('ddescription') || '').trim(), photos: pendingPhotos.slice(), alt: (fd.get('alt') || '').trim(),
+    durationMin: kind === 'session' ? Number(fd.get('durationMin')) || 0 : undefined, availDays: days, availHours: hours, slots: kind === 'session' ? slots : undefined,
+    delivers: (fd.get('delivers') || '').trim(), instant: kind === 'download' ? (fd.get('instant') || '').trim() : '',
+    game: kind === 'ingame' ? (fd.get('game') || '').trim() : '', gameAllowsTrade: kind === 'ingame' && !!fd.get('gameAllowsTrade') };
+  if (base.status === 'draft') { it.status = 'active'; it.listedAt = Store.now(); }
+  const errs = validateDigital(it);
+  if (it.photos.length && !it.alt) errs.push('Describe the photos in a few words.');
+  if (errs.length) {
+    document.getElementById('formErrors').innerHTML = `<div class="notice err" role="alert"><ul style="margin:0;padding-left:18px">${errs.map(e => `<li>${esc(tr(e))}</li>`).join('')}</ul></div>`;
+    return;
+  }
+  if (existing) Object.assign(existing, it); else st.items.unshift(it);
+  save();
+  location.hash = '#/item/' + it.id;
+  toast(existing ? 'Saved.' : 'Listed on Trove Digital.');
 }
 
 // A new listing that matches a Wanted post sends that buyer an alert.
@@ -1366,6 +1624,7 @@ function route() {
   renderBrowseMenu();
   if (!a) renderBrowse(params);
   else if (a === 'item') renderItem(b);
+  else if (a === 'digital') renderDigital(params);
   else if (a === 'seller') renderSeller(b);
   else if (a === 'cart') renderCart();
   else if (a === 'checkout') renderCheckout();
@@ -1443,6 +1702,7 @@ app.addEventListener('change', e => {
   const t = e.target, f = t.form;
   if (t.dataset.actChange === 'seller') { S().actingSeller = t.value; save(); route(); return; }
   if (t.id === 'bulkInput') { addDrafts(t.files); t.value = ''; return; }
+  if (t.name === 'kind' && f) { applyKind(f); return; }
   if (!f) return;
   if (f.dataset.form === 'filters') {
     const q = new URLSearchParams();
@@ -1481,6 +1741,7 @@ app.addEventListener('click', e => {
       save(); route(); break;
     case 'share': shareLink(btn.dataset.path, btn.dataset.title); break;
     case 'tour': startTour(); break;
+    case 'sessionDone': if (act(id, 'deliver', 'seller', {})) { toast('Session marked done.'); route(); } break;
     case 'moneyAll': moneyAll = !moneyAll; route(); break;
     case 'range': insightDays = +btn.dataset.days; ageOpen = -1; route(); break;
     case 'ageBand': { const i = +btn.dataset.i; ageOpen = ageOpen === i ? -1 : i; route(); const t = app.querySelector(`[data-act="ageBand"][data-i="${i}"]`); if (t) t.focus(); break; }
@@ -1529,6 +1790,9 @@ app.addEventListener('submit', async e => {
       }
       break;
     }
+    case 'buyDigital': buyDigital(f); break;
+    case 'deliver': if (act(id, 'deliver', 'seller', { note: fd.get('note') })) { toast('Marked as delivered.'); route(); } break;
+    case 'dsearch': location.hash = '#/digital' + (fd.get('q').trim() ? '?q=' + encodeURIComponent(fd.get('q').trim()) : ''); break;
     case 'handoff': if (act(id, 'handoff', 'seller', { code: fd.get('code').replace(/\s/g, '') })) { toast('Handoff confirmed.'); route(); } break;
     case 'ship': {
       const file = f.pack.files[0];

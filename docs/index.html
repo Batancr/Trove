@@ -426,6 +426,49 @@ details.tbl table{margin-top:6px}
   #app.console .pane{padding:16px 0 32px}
   .phead h1{font-size:1.3rem}
 }
+
+/* Trove Digital */
+[data-only][hidden]{display:none !important}
+.drop a.dmenu{display:none}
+@media (max-width:480px){nav.main>a.dlink{display:none}.drop a.dmenu{display:block}}
+.dtag{display:inline-block;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;background:var(--orange);color:var(--orange-ink);vertical-align:middle;margin-right:4px}
+.dcard .ph{position:relative}
+.kind{position:absolute;left:8px;top:8px;font-size:.74rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bg);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.kind.k-session{background:var(--blue);color:var(--blue-ink)}
+.kind.k-download{background:var(--orange);color:var(--orange-ink)}
+.kind.k-ingame{background:color-mix(in srgb,var(--c3) 22%,var(--bg));color:var(--ink)}
+.eyebrow{margin:0 0 6px;font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.dhero{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 24px 18px;margin-bottom:20px}
+.dhero h1{margin:0 0 8px;font-size:clamp(1.5rem,3.6vw,2.2rem);line-height:1.15;max-width:22ch}
+.dhero .lede{margin-bottom:16px}
+.dsearch{display:flex;gap:8px;max-width:560px;margin-bottom:14px}
+.dsearch input{flex:1;min-width:0}
+.dhero .cats{margin-bottom:0}
+.dhero .cats a{background:var(--bg)}
+.dhero .cats a[aria-current=true]{background:var(--blue)}
+.dhow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:26px}
+.dhow div{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.dhow b{display:block;margin-bottom:2px}
+.dhow span{color:var(--muted);font-size:.9rem}
+.dsell{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.dsell h2{margin:0 0 4px} .dsell p{margin:0;max-width:56ch}
+.crumb{font-size:.88rem;color:var(--muted);margin:0 0 12px}
+.crumb a{color:var(--muted)}
+.buybox{border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0 20px;background:var(--bg)}
+.buybox button[type=submit]{width:100%}
+.slots{border:0;padding:0;margin:0 0 12px;min-width:0}
+.slots legend{margin-bottom:8px}
+.sday{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.sday>span{width:100%;font-size:.84rem;font-weight:700;color:var(--muted)}
+.slotbtn{position:relative;cursor:pointer}
+.slotbtn input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.slotbtn span{display:inline-block;padding:6px 12px;border:1px solid var(--line);border-radius:8px;font-size:.9rem;font-variant-numeric:tabular-nums;background:var(--surface)}
+.slotbtn input:checked+span{background:var(--blue);border-color:var(--blue-ink);color:var(--blue-ink);font-weight:700}
+.slotbtn input:focus-visible+span{outline:2px solid var(--focus);outline-offset:2px}
+.dfile{display:flex;gap:10px;align-items:center;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--bg);margin:0 0 6px;word-break:break-word}
+.kinds .radio{margin-bottom:6px}
+@media (min-width:700px){.kinds{display:grid !important;grid-template-columns:1fr 1fr;column-gap:8px}.kinds legend{grid-column:1/-1}}
+@media (max-width:640px){.dhow{grid-template-columns:1fr}.dhero{padding:20px 16px 14px}.dsearch button{padding-inline:14px}}
 </style>
 </head>
 <body>
@@ -452,12 +495,14 @@ details.tbl table{margin-top:6px}
         <summary>Browse</summary>
         <div class="drop wide" id="browseDrop"></div>
       </details>
+      <a href="#/digital" data-nav="digital" class="dlink">Digital</a>
       <a href="#/sell/new" class="sell" data-nav="sellnew">Sell</a>
       <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
       <a href="#/cart" data-nav="cart">Cart<span id="cartCount"></span></a>
       <details class="menu" id="menu">
         <summary>Menu<span id="inboxCount"></span></summary>
         <div class="drop">
+          <a href="#/digital" class="dmenu">Trove Digital</a>
           <a href="#/orders">My orders</a>
           <a href="#/inbox">Alerts</a>
           <a href="#/wanted">Wanted</a>
@@ -480,11 +525,11 @@ details.tbl table{margin-top:6px}
   </div>
 </footer>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<script src="logic.js?v=8"></script>
-<script src="samples.js?v=8"></script>
-<script src="store.js?v=8"></script>
-<script src="i18n.js?v=8"></script>
-<script src="app.js?v=8"></script>
-<script src="tour.js?v=8"></script>
+<script src="logic.js?v=9"></script>
+<script src="samples.js?v=9"></script>
+<script src="store.js?v=9"></script>
+<script src="i18n.js?v=9"></script>
+<script src="app.js?v=9"></script>
+<script src="tour.js?v=9"></script>
 </body>
 </html>
