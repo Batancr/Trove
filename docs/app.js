@@ -939,7 +939,7 @@ const DASH_PAGES = {
   interest: ['Interest', 'Questions to answer, and who is watching what.'],
   money: ['Money', 'What you earned, what is on the way, and what each sale cost.'],
   insights: ['Insights', 'What sells, when, and where buyers drop off.'],
-  pulse: ['Pulse', 'Your shop at a glance, live. Switch the range or what the charts show.'],
+  pulse: ['Pulse', 'The heartbeat of your shop, live. Tune what counts and move the panels around.'],
   profile: ['Profile', 'How your shop looks to buyers.'],
 };
 

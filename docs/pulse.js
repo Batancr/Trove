@@ -19,7 +19,14 @@ const pArc = (cx, cy, r, a0, a1) => {
   return `M${sx.toFixed(2)} ${sy.toFixed(2)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
 };
 const pTip = t => tipAttrs(esc(t));
-const pPanel = (cls, title, body, sub = '') => `<section class="pz ${cls}"><h3><i></i><span>${tr(title)}</span></h3>${sub ? `<p class="psub">${sub}</p>` : ''}${body}</section>`;
+const pPanel = (cls, title, body, sub = '', id = '') => {
+  const L = pulseLayout(), size = (id && L.size[id]) || cls, min = id && L.min[id];
+  const ctl = id ? `<span class="pctl">
+      <button type="button" class="pgrab" data-pa="grab" aria-label="${esc(tr('Move'))}: ${esc(tr(title))}" title="${esc(tr('Drag, or use the arrow keys'))}">⠿</button>
+      <button type="button" data-pa="size" aria-label="${esc(tr('Resize'))}: ${esc(tr(title))}" title="${esc(tr('Resize'))}">⤢</button>
+      <button type="button" data-pa="min" aria-expanded="${!min}" aria-label="${esc(tr(min ? 'Open' : 'Minimise'))}: ${esc(tr(title))}" title="${esc(tr(min ? 'Open' : 'Minimise'))}">${min ? '+' : '–'}</button></span>` : '';
+  return `<section class="pz ${size}${min ? ' pmin' : ''}" ${id ? `data-pid="${id}"` : ''}><h3><i></i><span>${tr(title)}</span>${ctl}</h3><div class="pbody">${sub ? `<p class="psub">${sub}</p>` : ''}${body}</div></section>`;
+};
 
 // Speedometer-style ring: this week's sales against the week before, as a 0 to 100 score (50 means level).
 function pGauge(score, delta, kpis) {
@@ -36,7 +43,7 @@ function pGauge(score, delta, kpis) {
       <path d="${pArc(100, 100, 78, a0, Math.max(a0 + .5, val))}" class="val" stroke="url(#pgG)" pathLength="100" filter="url(#pglow)"/>
       <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="5" class="tip-dot"/><circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="5" class="ping"/>
       <text x="100" y="104" class="big">${score}</text>
-      <text x="100" y="126" class="lab">${esc(tr('PULSE'))}</text>
+      <text x="100" y="126" class="lab">${esc(tr('SALES'))}</text>
       <text x="100" y="150" class="lab2">${esc(delta)}</text>
     </svg>
     <div class="pkpis">${kpis.map(([v, l]) => `<div><b>${v}</b><span>${tr(l)}</span></div>`).join('')}</div></div>`;
@@ -170,6 +177,198 @@ function pRings(rings) {
     <ul class="plegend">${rings.map((g, i) => `<li><i style="background:${PULSE[i]}"></i><span>${tr(g.label)}</span><b>${esc(g.text)}</b></li>`).join('')}</ul></div>`;
 }
 
+// ---------- Heartbeat: "Track the pulse of your business" ----------
+// The seller weights nine factors (logic.js HB_FACTORS); the weighted score becomes a heart rate.
+// Sliders, presets and "what if" boosts update the heart in place, without redrawing the page.
+let pulseSim = new Set(), pulseBooted = false, pulseNow = null, pulsePrev = null;
+const P_SIZES = ['c4', 'c6', 'c8', 'c12'];
+const P_ACTIONS = {
+  sales: ['List more items', '#/sell/new'], orders: ['List more items', '#/sell/new'], attention: ['Share your listings', '#/dashboard/listings'],
+  demand: ['Check your prices', '#/dashboard/listings'], conversion: ['Improve photos and titles', '#/dashboard/listings'], fresh: ['Add new stock', '#/sell/new'],
+  replies: ['Answer questions', '#/dashboard/todo'], speed: ['Ship sooner', '#/dashboard/todo'], trust: ['Sort out open problems', '#/dashboard/todo'],
+};
+const P_ZONES = { resting: 'Resting', steady: 'Steady', rising: 'Rising', racing: 'Racing' };
+
+function pulseWeights() {
+  const st = S();
+  if (!st.prefs.pulseWeights) st.prefs.pulseWeights = Object.fromEntries(HB_FACTORS.map(f => [f.key, f.w]));
+  return st.prefs.pulseWeights;
+}
+function pulseLayout() {
+  const st = S();
+  if (!st.prefs.pulseLayout) st.prefs.pulseLayout = { order: [], size: {}, min: {} };
+  return st.prefs.pulseLayout;
+}
+
+// Score every factor 0 to 1 for the days [from, to), with `before` the same-length window just before it.
+function pulseScores({ orders, events, mineItems, sid, from, to, stats }) {
+  const len = to - from, mineIds = new Set(mineItems.map(i => i.id));
+  const sold = (a, b) => orders.filter(o => o.sellerId === sid && o.closedAt && o.closedAt >= a && o.closedAt < b);
+  const ev = (a, b, kinds) => events.filter(e => mineIds.has(e.itemId) && kinds.includes(e.kind) && e.at >= a && e.at < b).length;
+  const now = sold(from, to), was = sold(from - len, from);
+  const total = list => list.reduce((t, o) => t + o.subtotal, 0);
+  const views = ev(from, to, ['view']), viewsWas = ev(from - len, from, ['view']);
+  const live = mineItems.filter(i => i.status === 'active' && (i.listedAt || 0) < to);
+  const qs = mineItems.flatMap(i => i.questions || []);
+  return {
+    sales: momentum(total(now), total(was)),
+    orders: momentum(now.length, was.length),
+    attention: momentum(views, viewsWas),
+    demand: Math.min(1, ev(from, to, ['save', 'cart']) / Math.max(1, live.length) / 2),
+    conversion: views ? Math.min(1, now.length / views / 0.1) : 0,
+    fresh: Math.min(1, mineItems.filter(i => i.listedAt >= from && i.listedAt < to).length / Math.max(1, live.length) / 0.3),
+    replies: qs.length ? qs.filter(q => q.a).length / qs.length : 1,
+    speed: stats.avgShipDays == null ? 0.7 : 1 - Math.min(stats.avgShipDays, 5) / 5,
+    trust: stats.sales ? 1 - stats.problems / stats.sales : 0.8,
+  };
+}
+
+// The ECG line: six beats drawn 100 units apart, slid left by one beat per heartbeat.
+function pEcgPath() {
+  let d = 'M-100 40';
+  for (let i = -1; i < 7; i++) { const x = i * 100; d += ` L${x + 28} 40 Q${x + 33} 31 ${x + 38} 40 L${x + 44} 40 L${x + 47} 48 L${x + 51} 6 L${x + 55} 70 L${x + 59} 40 L${x + 68} 40 Q${x + 76} 26 ${x + 84} 40 L${x + 100} 40`; }
+  return d;
+}
+
+function pHeart(hb, prevBpm) {
+  const C = 2 * Math.PI * 96, arc = 0.75 * C;
+  const diff = hb.bpm - prevBpm;
+  const ticks = Array.from({ length: 60 }, (_, i) => { const [x1, y1] = pPolar(130, 130, 122, i * 6), [x2, y2] = pPolar(130, 130, i % 5 ? 117 : 112, i * 6); return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`; }).join('');
+  return `<div class="phcore" style="--beat:${(60 / hb.bpm).toFixed(3)}s" data-zone="${hb.zone}">
+    <svg viewBox="0 0 260 260" class="phring" role="img" aria-label="${esc(tr('Heart rate'))} ${hb.bpm} bpm, ${esc(tr(P_ZONES[hb.zone]))}">
+      <g class="phticks">${ticks}</g>
+      <circle cx="130" cy="130" r="96" class="phtrack" stroke-dasharray="${arc.toFixed(1)} ${C.toFixed(1)}" transform="rotate(135 130 130)"/>
+      <circle cx="130" cy="130" r="96" class="phval" id="phArc" stroke-dasharray="${(arc * hb.composite).toFixed(1)} ${C.toFixed(1)}" transform="rotate(135 130 130)" filter="url(#pglow)"/>
+      <circle cx="130" cy="130" r="74" class="phglow"/>
+      <circle cx="130" cy="130" r="58" class="phinner"/>
+      <g transform="translate(130 88) scale(.5) translate(-130 -133)"><path class="phheart" d="M130 116c-6-12-26-11-26 4 0 12 15 22 26 31 11-9 26-19 26-31 0-15-20-16-26-4z"/></g>
+      <text x="130" y="146" text-anchor="middle" class="phbpm" id="phBpm">${hb.bpm}</text>
+      <text x="130" y="166" text-anchor="middle" class="phunit">BPM</text>
+      <text x="130" y="200" text-anchor="middle" class="phzone" id="phZone">${esc(tr(P_ZONES[hb.zone]).toUpperCase())}</text>
+    </svg>
+    <p class="phdelta ${diff >= 0 ? 'up' : 'down'}" id="phDelta">${diff >= 0 ? '▲' : '▼'} ${Math.abs(diff)} bpm <em>${tr('vs the period before')}</em></p>
+    <p class="phsim" id="phSim" hidden></p>
+    <svg viewBox="0 0 600 80" preserveAspectRatio="none" class="pecg" aria-hidden="true"><path class="pecgbase" d="M0 40H600"/><g class="pecgmove"><path d="${pEcgPath()}" filter="url(#pglow)"/></g></svg>
+  </div>`;
+}
+
+function pConsole(hb) {
+  const W = pulseWeights();
+  const rows = HB_FACTORS.map(f => {
+    const p = hb.parts.find(x => x.key === f.key);
+    return `<div class="pfac${pulseSim.has(f.key) ? ' sim' : ''}" data-k="${f.key}">
+      <div class="pfname"><b>${tr(f.label)}</b><span class="pfscore" ${tipAttrs(esc(tr(f.why)))}>${Math.round(p.score * 100)}</span></div>
+      <div class="pfbar"><i style="width:${(p.score * 100).toFixed(0)}%"></i></div>
+      <label class="pfw"><span class="sr">${tr('Weight')}: ${tr(f.label)}</span><input type="range" min="0" max="5" step="1" value="${W[f.key]}" data-pw="${f.key}"><output>${W[f.key]}</output></label>
+      <span class="pfadd" data-add="${f.key}">+${p.bpm.toFixed(0)}</span>
+      <button type="button" class="pfboost" data-pa="sim" data-k="${f.key}" aria-pressed="${pulseSim.has(f.key)}" title="${esc(tr('What if this were perfect?'))}">${tr('Boost')}</button>
+    </div>`;
+  }).join('');
+  const preset = Object.keys(HB_PRESETS).find(k => HB_FACTORS.every(f => HB_PRESETS[k][f.key] === +W[f.key])) || '';
+  return `<div class="pcon">
+    <div class="pconhead"><b>${tr('Power routing')}</b><span>${tr('Drag a slider to decide how much each factor counts.')}</span></div>
+    <div class="seg pseg ppre" role="group" aria-label="${esc(tr('Presets'))}">${['balanced', 'growth', 'reputation', 'hustle'].map(k => `<button type="button" data-pa="preset" data-k="${k}" aria-pressed="${preset === k}">${tr({ balanced: 'Balanced', growth: 'Growth', reputation: 'Reputation', hustle: 'Hustle' }[k])}</button>`).join('')}</div>
+    <div class="pfhead"><span>${tr('Factor')}</span><span>${tr('Score')}</span><span>${tr('Weight')}</span><span>bpm</span><span></span></div>
+    ${rows}
+    <p class="pnext" id="pNext"></p>
+  </div>`;
+}
+
+// Recompute the heart from the saved scores and update the page in place.
+function pulseRefresh() {
+  if (!pulseNow || !document.getElementById('phBpm')) return;
+  const W = pulseWeights(), hb = heartbeat(pulseNow, W), prev = heartbeat(pulsePrev, W).bpm;
+  const core = document.querySelector('.phcore'), C = 2 * Math.PI * 96;
+  core.style.setProperty('--beat', (60 / hb.bpm).toFixed(3) + 's'); core.dataset.zone = hb.zone;
+  document.getElementById('phBpm').textContent = hb.bpm;
+  document.getElementById('phZone').textContent = tr(P_ZONES[hb.zone]).toUpperCase();
+  document.getElementById('phArc').setAttribute('stroke-dasharray', `${(0.75 * C * hb.composite).toFixed(1)} ${C.toFixed(1)}`);
+  document.querySelector('.phring').setAttribute('aria-label', `${tr('Heart rate')} ${hb.bpm} bpm, ${tr(P_ZONES[hb.zone])}`);
+  const d = hb.bpm - prev, del = document.getElementById('phDelta');
+  del.className = 'phdelta ' + (d >= 0 ? 'up' : 'down');
+  del.firstChild.textContent = `${d >= 0 ? '▲' : '▼'} ${Math.abs(d)} bpm `;
+  hb.parts.forEach(p => { const el = document.querySelector(`[data-add="${p.key}"]`); if (el) el.textContent = '+' + p.bpm.toFixed(0); });
+  const sim = document.getElementById('phSim');
+  if (pulseSim.size) {
+    const boosted = { ...pulseNow }; pulseSim.forEach(k => { boosted[k] = 1; });
+    const to = heartbeat(boosted, W).bpm;
+    sim.hidden = false; sim.innerHTML = `${tr('With your boosts')}: <b>${to} bpm</b> (+${to - hb.bpm})`;
+  } else sim.hidden = true;
+  const g = heartGains(pulseNow, W)[0], next = document.getElementById('pNext');
+  if (g) { const [label, href] = P_ACTIONS[g.key]; next.innerHTML = `<span>${tr('Fastest way up')}:</span> <b>${tr(HB_FACTORS.find(f => f.key === g.key).label)}</b> +${g.gain} bpm · <a href="${href}">${tr(label)} →</a>`; }
+  else next.innerHTML = `<span>${tr('Every factor is maxed out. Nice.')}</span>`;
+  const preset = Object.keys(HB_PRESETS).find(k => HB_FACTORS.every(f => HB_PRESETS[k][f.key] === +W[f.key])) || '';
+  document.querySelectorAll('[data-pa="preset"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === preset));
+}
+
+function pulseSaveOrder() {
+  const L = pulseLayout();
+  L.order = [...document.querySelectorAll('.pgrid > .pz[data-pid]')].map(el => el.dataset.pid);
+  save();
+}
+
+// Sliders: live while dragging, saved when let go.
+document.addEventListener('input', e => {
+  const r = e.target.closest && e.target.closest('[data-pw]');
+  if (!r) return;
+  pulseWeights()[r.dataset.pw] = +r.value;
+  r.nextElementSibling.textContent = r.value;
+  pulseRefresh();
+});
+document.addEventListener('change', e => { if (e.target.closest && e.target.closest('[data-pw]')) save(); });
+
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-pa]');
+  if (!b || !b.closest('.pulse')) return;
+  const L = pulseLayout(), panel = b.closest('.pz'), id = panel && panel.dataset.pid;
+  switch (b.dataset.pa) {
+    case 'preset': Object.assign(pulseWeights(), HB_PRESETS[b.dataset.k]); save();
+      document.querySelectorAll('[data-pw]').forEach(r => { r.value = pulseWeights()[r.dataset.pw]; r.nextElementSibling.textContent = r.value; });
+      pulseRefresh(); break;
+    case 'sim': { const k = b.dataset.k; pulseSim.has(k) ? pulseSim.delete(k) : pulseSim.add(k);
+      b.setAttribute('aria-pressed', pulseSim.has(k)); b.closest('.pfac').classList.toggle('sim', pulseSim.has(k)); pulseRefresh(); break; }
+    case 'size': { const cur = P_SIZES.find(c => panel.classList.contains(c)) || 'c4', nxt = P_SIZES[(P_SIZES.indexOf(cur) + 1) % P_SIZES.length];
+      panel.classList.remove(...P_SIZES, 'c5', 'c7'); panel.classList.add(nxt); L.size[id] = nxt; save(); break; }
+    case 'min': { const m = !panel.classList.contains('pmin'); panel.classList.toggle('pmin', m); L.min[id] = m;
+      b.textContent = m ? '+' : '–'; b.setAttribute('aria-expanded', !m); save(); break; }
+    case 'reset': S().prefs.pulseLayout = null; S().prefs.pulseWeights = null; pulseSim.clear(); save(); route(); break;
+    case 'mode': S().prefs.pulseMode = S().prefs.pulseMode === 'mark' ? 'arc' : 'mark'; save();
+      document.querySelector('.pulse').dataset.mode = S().prefs.pulseMode; b.setAttribute('aria-pressed', S().prefs.pulseMode === 'mark'); break;
+  }
+});
+
+// Moving panels: drag the grip with a mouse or finger, or focus it and use the arrow keys.
+let pDrag = null;
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest && e.target.closest('.pgrab');
+  if (!g) return;
+  e.preventDefault();
+  pDrag = g.closest('.pz'); pDrag.classList.add('pdrag'); g.setPointerCapture(e.pointerId);
+});
+document.addEventListener('pointermove', e => {
+  if (!pDrag) return;
+  if (e.clientY < 70) scrollBy(0, -18); else if (e.clientY > innerHeight - 70) scrollBy(0, 18);   // scroll the page while dragging near an edge
+  const over = document.elementsFromPoint(e.clientX, e.clientY).map(el => el.closest('.pz')).find(el => el && el !== pDrag && el.parentNode === pDrag.parentNode);
+  if (!over) return;
+  const r = over.getBoundingClientRect();
+  const after = e.clientY > r.bottom - r.height / 3 || (e.clientY > r.top + r.height / 3 && e.clientX > r.left + r.width / 2);
+  const ref = after ? over.nextSibling : over;
+  if (ref !== pDrag && ref !== pDrag.nextSibling) pDrag.parentNode.insertBefore(pDrag, ref);
+});
+const pDrop = () => { if (!pDrag) return; pDrag.classList.remove('pdrag'); pDrag = null; pulseSaveOrder(); };
+document.addEventListener('pointerup', pDrop);
+document.addEventListener('pointercancel', pDrop);
+document.addEventListener('keydown', e => {
+  const g = e.target.closest && e.target.closest('.pgrab');
+  if (!g || !['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault();
+  const p = g.closest('.pz'), back = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+  const sib = back ? p.previousElementSibling : p.nextElementSibling;
+  if (!sib) return;
+  p.parentNode.insertBefore(p, back ? sib : sib.nextSibling);
+  g.focus(); pulseSaveOrder();
+});
+
 function renderDashPulse() {
   const st = S(), sid = st.actingSeller, now = Store.now(), me = sellerById(sid) || {}, N = pulseDays;
   const orders = mainOrders(), items = mainItems(), events = st.events || [];
@@ -196,6 +395,10 @@ function renderDashPulse() {
 
   const stats = sellerStats(orders, sid);
   const live = mineItems.filter(i => i.status === 'active');
+  const end = Store.now();
+  pulseNow = pulseScores({ orders, events, mineItems, sid, from: end - N * DAY, to: end, stats });
+  pulsePrev = pulseScores({ orders, events, mineItems, sid, from: end - 2 * N * DAY, to: end - N * DAY, stats });
+  const hb = heartbeat(pulseNow, pulseWeights()), prevBpm = heartbeat(pulsePrev, pulseWeights()).bpm;
   const qs = mineItems.flatMap(i => i.questions || []);
   const interest = interestByItem(events, live).reduce((s, r) => s + r.save + r.cart, 0);
   const axes = [
@@ -227,28 +430,40 @@ function renderDashPulse() {
   const m = P_METRICS[pulseMetric], mNow = tot(cur, pulseMetric);
   const seg = `<div class="seg" role="group" aria-label="${esc(tr('Date range'))}">${P_RANGES.map(([d, l]) => `<button type="button" data-act="prange" data-days="${d}" aria-pressed="${N === d}">${tr(l)}</button>`).join('')}</div>`;
   const clock = new Date(now).toLocaleTimeString(lang() === 'zh' ? 'zh-CN' : 'en-CA', { hour: '2-digit', minute: '2-digit' });
-  app.innerHTML = dashHead('pulse', seg) + `<div class="pulse">
+  const panels = {
+    gauge: pPanel('c4', 'Sales gauge', pGauge(score, deltaTxt(change(sales)), [[esc(shortMoney(released)), 'Released'], [esc(shortMoney(held)), 'Held'], [String(live.length), 'Live']]), tr('Sales this period against the one before. 50 means level.'), 'gauge'),
+    signal: pPanel('c8', 'Signal', `<div class="psighead"><div><b>${esc(m.big(mNow))}</b><span>${tr(m.label)} · ${tr(P_RANGES.find(r => r[0] === N)[1])}</span></div>
+        <div class="seg pseg" role="group" aria-label="${esc(tr('Show'))}">${Object.entries(P_METRICS).map(([k, v]) => `<button type="button" data-act="pmetric" data-m="${k}" aria-pressed="${pulseMetric === k}">${tr(v.label)}</button>`).join('')}</div></div>
+        ${pSignal(cur, pulseMetric)}`, tr('Spot busy and quiet days. Tap a number above or switch here to change what it shows.'), 'signal'),
+    clock: pPanel('c4', 'Sales clock', pClock(hours), tr('Set meetups and post new listings when buyers are most active.'), 'clock'),
+    orbit: pPanel('c4', 'Category orbit', pOrbit(cats, (me.name || '?')[0]), tr('Which types earn the most, so you know what to buy more of.'), 'orbit'),
+    radar: pPanel('c4', 'Shop profile', pRadar(axes), tr('Your strongest and weakest habits as a seller, out of 100.'), 'radar'),
+    flow: pPanel('c8', 'Buyer flow', pFlow(salesFunnel(events, orders, items, sid, now - N * DAY, now)), tr('Where buyers drop off between looking and buying.'), 'flow'),
+    hex: pPanel('c4', 'Sales honeycomb', pHex(salesByDay(orders, sid, now, 84)), tr('Streaks and gaps over 12 weeks, one cell per day.'), 'hex'),
+    eq: pPanel('c8', 'Weekly equalizer', pEq(weeklySales(orders, sid, now, 12)), tr('Is the shop growing week to week?'), 'eq'),
+    rings: pPanel('c4', 'Shop health', pRings(rings), tr('Small habits that keep buyers coming back.'), 'rings'),
+  };
+  const L = pulseLayout(), order = L.order.filter(k => panels[k]).concat(Object.keys(panels).filter(k => !L.order.includes(k)));
+  const mode = st.prefs.pulseMode || 'arc', boot = !pulseBooted; pulseBooted = true;
+  app.innerHTML = dashHead('pulse', seg) + `<div class="pulse${boot ? ' pboot' : ''}" data-mode="${mode}">
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="pglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></svg>
     <header class="ptop"><span class="plive"><i></i>${tr('LIVE')}</span><b>TROVE // ${esc((me.name || '').toUpperCase())}</b><span class="pclockt">${esc(clock)}</span>
+      <span class="ptools"><button type="button" class="ptool" data-pa="mode" aria-pressed="${mode === 'mark'}">${tr('Red and gold')}</button><button type="button" class="ptool" data-pa="reset">${tr('Reset layout')}</button></span>
       <a href="#/dashboard/insights">${tr('Exact numbers are in Insights')} →</a></header>
     ${tick ? `<div class="ptick" aria-label="${esc(tr('Recent activity'))}"><div class="ptrack">${tick}${tick}</div></div>` : ''}
+    <section class="phb" aria-labelledby="phTitle">
+      <div class="phleft"><h2 id="phTitle">${tr('Track the pulse of your business.')}</h2>
+        <p class="phlede">${tr('Your heart rate climbs as sales, buyers and good habits pick up. You decide what counts.')}</p>
+        ${pHeart(hb, prevBpm)}</div>
+      ${pConsole(hb)}
+    </section>
     <div class="pheros">
       ${hero('Sales', money(sales.now), change(sales), 'What buyers paid for your items.', 'total')}
       ${hero('Orders', String(count.now), change(count), 'Finished sales, any size.', 'count')}
       ${hero('Views', String(views.now), change(views), 'People opening your listings.', 'views')}
       ${hero('Average order', money(aov.now), change(aov), 'Bundle items to raise this.')}
     </div>
-    <div class="pgrid">
-      ${pPanel('c4', 'Shop pulse', pGauge(score, deltaTxt(change(sales)), [[esc(shortMoney(released)), 'Released'], [esc(shortMoney(held)), 'Held'], [String(live.length), 'Live']]), tr('Sales this period against the one before. 50 means level.'))}
-      ${pPanel('c8', 'Signal', `<div class="psighead"><div><b>${esc(m.big(mNow))}</b><span>${tr(m.label)} · ${tr(P_RANGES.find(r => r[0] === N)[1])}</span></div>
-        <div class="seg pseg" role="group" aria-label="${esc(tr('Show'))}">${Object.entries(P_METRICS).map(([k, v]) => `<button type="button" data-act="pmetric" data-m="${k}" aria-pressed="${pulseMetric === k}">${tr(v.label)}</button>`).join('')}</div></div>
-        ${pSignal(cur, pulseMetric)}`, tr('Spot busy and quiet days. Tap a number above or switch here to change what it shows.'))}
-      ${pPanel('c4', 'Sales clock', pClock(hours), tr('Set meetups and post new listings when buyers are most active.'))}
-      ${pPanel('c4', 'Category orbit', pOrbit(cats, (me.name || '?')[0]), tr('Which types earn the most, so you know what to buy more of.'))}
-      ${pPanel('c4', 'Shop profile', pRadar(axes), tr('Your strongest and weakest habits as a seller, out of 100.'))}
-      ${pPanel('c8', 'Buyer flow', pFlow(salesFunnel(events, orders, items, sid, now - N * DAY, now)), tr('Where buyers drop off between looking and buying.'))}
-      ${pPanel('c4', 'Sales honeycomb', pHex(salesByDay(orders, sid, now, 84)), tr('Streaks and gaps over 12 weeks, one cell per day.'))}
-      ${pPanel('c7', 'Weekly equalizer', pEq(weeklySales(orders, sid, now, 12)), tr('Is the shop growing week to week?'))}
-      ${pPanel('c5', 'Shop health', pRings(rings), tr('Small habits that keep buyers coming back.'))}
-    </div></div>`;
+    <p class="phint">${tr('Drag ⠿ to rearrange panels, ⤢ to resize, – to tuck one away.')}</p>
+    <div class="pgrid">${order.map(k => panels[k]).join('')}</div></div>`;
+  pulseRefresh();
 }

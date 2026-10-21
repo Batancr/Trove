@@ -657,9 +657,63 @@ function ordersCsv(orders, cfg = CONFIG) {
   return [head, ...rows].map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 }
 
+// ---------- Pulse: the shop's heartbeat ----------
+// Each factor is scored 0 to 1 from the seller's own data; the seller weights them 0 to 5.
+// The weighted average maps onto a heart rate: 48 bpm resting, 180 bpm racing.
+const HB_FACTORS = [
+  { key: 'sales', label: 'Sales momentum', w: 5, why: 'Sales this period against the one before.' },
+  { key: 'orders', label: 'Order momentum', w: 3, why: 'Number of orders against the period before.' },
+  { key: 'attention', label: 'Buyer attention', w: 3, why: 'Listing views against the period before.' },
+  { key: 'demand', label: 'Demand', w: 3, why: 'Saves and carts for each live listing.' },
+  { key: 'conversion', label: 'Conversion', w: 3, why: 'Orders for every view. 10% or better scores full.' },
+  { key: 'fresh', label: 'Fresh stock', w: 2, why: 'New listings this period, for each live one.' },
+  { key: 'replies', label: 'Replies', w: 2, why: 'Share of buyer questions answered.' },
+  { key: 'speed', label: 'Shipping speed', w: 2, why: 'Days from payment to shipping. Same day scores full.' },
+  { key: 'trust', label: 'Trust', w: 2, why: 'Share of orders with no problem reported.' },
+];
+const HB_PRESETS = {
+  balanced: { sales: 3, orders: 3, attention: 3, demand: 3, conversion: 3, fresh: 3, replies: 3, speed: 3, trust: 3 },
+  growth: { sales: 5, orders: 4, attention: 4, demand: 3, conversion: 2, fresh: 3, replies: 1, speed: 1, trust: 1 },
+  reputation: { sales: 1, orders: 1, attention: 1, demand: 2, conversion: 2, fresh: 1, replies: 5, speed: 5, trust: 5 },
+  hustle: { sales: 2, orders: 3, attention: 3, demand: 4, conversion: 3, fresh: 5, replies: 4, speed: 2, trust: 1 },
+};
+const HB_MIN = 48, HB_MAX = 180;
+const clamp01 = v => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+
+// Growth against the period before as 0 to 1: level is 0.5, double is 0.67, half is 0.33.
+function momentum(now, before) {
+  if (!before) return now ? 0.75 : 0.5;
+  const r = now / before;
+  return clamp01(r / (1 + r));
+}
+
+function heartZone(bpm) {
+  return bpm < 72 ? 'resting' : bpm < 100 ? 'steady' : bpm < 130 ? 'rising' : 'racing';
+}
+
+// scores: { key: 0..1 }, weights: { key: 0..5 }. Returns the heart rate and each factor's share of it.
+function heartbeat(scores, weights) {
+  const w = k => Math.max(0, Math.min(5, weights && weights[k] != null ? +weights[k] : HB_FACTORS.find(f => f.key === k).w));
+  const total = HB_FACTORS.reduce((t, f) => t + w(f.key), 0);
+  const parts = HB_FACTORS.map(f => {
+    const score = clamp01(scores[f.key]), weight = w(f.key);
+    return { key: f.key, score, weight, bpm: total ? (weight * score / total) * (HB_MAX - HB_MIN) : 0 };
+  });
+  const composite = total ? parts.reduce((t, p) => t + p.weight * p.score, 0) / total : 0;
+  const bpm = Math.round(HB_MIN + composite * (HB_MAX - HB_MIN));
+  return { bpm, composite, zone: heartZone(bpm), parts };
+}
+
+// How many bpm each factor would add if it were perfect, best first.
+function heartGains(scores, weights) {
+  const base = heartbeat(scores, weights).bpm;
+  return HB_FACTORS.map(f => ({ key: f.key, gain: heartbeat({ ...scores, [f.key]: 1 }, weights).bpm - base }))
+    .filter(g => g.gain > 0).sort((a, b) => b.gain - a.gain);
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
-    CONFIG, DAY, STATES, ACTIONS, CONDITIONS,
+    CONFIG, DAY, STATES, ACTIONS, CONDITIONS, HB_FACTORS, HB_PRESETS, HB_MIN, HB_MAX, momentum, heartZone, heartbeat, heartGains,
     cents, fmtMoney, cardFee, PAY_METHODS, ALL_METHODS, methodsFor, processingFee, packBoxes, shippingFor, spareSmallSlots, cartTotals, splitBySeller, cartTotalsAll, sellerStats,
     makeHandoffCode, createOrder, canDo, transition, sweep, moneySteps, payoutFor, moneySummary,
     notificationsFor, parseQuery, search, validateListing, ordersCsv, csvCell,

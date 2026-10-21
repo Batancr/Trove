@@ -1,11 +1,11 @@
 // Trove service worker: makes the site installable and keeps it working offline.
 // When you bump ?v= on the script tags, bump VERSION here too so phones pick up the new files.
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = 'trove-' + VERSION;
 const FONTS = 'trove-fonts';
 const CORE = [
   './', 'index.html', 'app.html', 'welcome.html', 'manifest.webmanifest',
-  'logic.js?v=11', 'samples.js?v=11', 'store.js?v=11', 'i18n.js?v=11', 'pulse.js?v=11', 'app.js?v=11', 'tour.js?v=11', 'pwa.js?v=11',
+  'logic.js?v=12', 'samples.js?v=12', 'store.js?v=12', 'i18n.js?v=12', 'pulse.js?v=12', 'app.js?v=12', 'tour.js?v=12', 'pwa.js?v=12',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png',
 ];
 
