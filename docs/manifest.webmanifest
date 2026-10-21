@@ -1,0 +1,24 @@
+{
+  "name": "Trove",
+  "short_name": "Trove",
+  "description": "Buy and sell with no Trove fees. Money is held until the item is in your hands.",
+  "id": "./app.html",
+  "start_url": "./app.html#/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fff0e2",
+  "theme_color": "#fff0e2",
+  "lang": "en-CA",
+  "categories": ["shopping", "business"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Sell something", "short_name": "Sell", "url": "./app.html#/sell/new", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Dashboard", "short_name": "Dashboard", "url": "./app.html#/dashboard", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "My orders", "short_name": "Orders", "url": "./app.html#/orders", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

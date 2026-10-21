@@ -581,7 +581,15 @@ details.tbl table{margin-top:6px}
 @media (prefers-reduced-motion:reduce){.pulse *,.pulse *::before{animation:none !important}}
 @media (max-width:1100px){.pz,.pz.c5,.pz.c7{grid-column:span 6}.pz.c8{grid-column:span 12}.pheros{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:700px){.pz{overflow-x:auto}.pz .psig,.pz .pflow,.pz .peq{min-width:540px}.pz,.pz.c5,.pz.c7,.pz.c8{grid-column:span 12}.pulse{padding:12px;border-radius:14px}.ptop a{margin-left:0}.prings{grid-template-columns:140px 1fr}}
+[data-install][hidden]{display:none !important}
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#fff0e2">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Trove">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 </head>
 <body>
 <a class="skip" href="#app">Skip to content</a>
@@ -620,6 +628,7 @@ details.tbl table{margin-top:6px}
           <a href="#/wanted">Wanted</a>
           <a href="#/settings">Settings</a>
           <a href="#/" id="tourLink">Take the tour</a>
+          <a href="#install" data-install hidden>Install the app</a>
           <button type="button" class="ghost small" id="langBtn" lang="zh-Hans" style="margin:6px 6px 2px">中文</button>
         </div>
       </details>
@@ -644,5 +653,6 @@ details.tbl table{margin-top:6px}
 <script src="pulse.js?v=11"></script>
 <script src="app.js?v=11"></script>
 <script src="tour.js?v=11"></script>
+<script src="pwa.js?v=11"></script>
 </body>
 </html>

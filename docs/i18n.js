@@ -281,6 +281,7 @@ const ZH = {
   'Buyers pay only the price and any delivery. Cash and e-Transfer are free; card and PayPal have a small processing fee that comes out of the sale.': '买家只付价格和配送费（如有）。现金和 e-Transfer 免费；银行卡和 PayPal 有少量手续费，从售价中扣除。',
   "Trove charges no fee. Buyers pay the price plus delivery, shown before checkout. When a buyer pays by card or PayPal, the payment company keeps about 2.9% + 30¢, taken from the seller's payout. Cash and e-Transfer at a meetup are free.": 'Trove 不收任何费用。买家支付价格和配送费，结账前就会显示。买家用银行卡或 PayPal 付款时，支付公司收取约 2.9% + 30¢，从卖家的收款中扣除。见面时用现金或 e-Transfer 免费。',
   'No Trove fees to buy or sell.': '买卖都不收 Trove 费用。',
+  'Install the app': '安装应用',
 };
 
 // Messages that contain a name or title the person typed

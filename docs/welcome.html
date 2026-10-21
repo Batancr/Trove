@@ -217,7 +217,15 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
 footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding-block:28px 40px}
 footer nav{display:flex;flex-wrap:wrap;gap:6px 20px}
 footer a{color:var(--muted)}
+[data-install][hidden]{display:none !important}
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#fff0e2">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Trove">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 </head>
 <body>
 
@@ -500,5 +508,6 @@ footer a{color:var(--muted)}
   update();
 })();
 </script>
+<script src="pwa.js?v=11"></script>
 </body>
 </html>

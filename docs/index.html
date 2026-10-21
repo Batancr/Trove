@@ -271,7 +271,15 @@ footer a{color:var(--muted)}
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;transition-delay:0s !important}
   .rv{opacity:1;transform:none}.frame{transform:none}
 }
+[data-install][hidden]{display:none !important}
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#fff0e2">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Trove">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 </head>
 <body>
 
@@ -422,7 +430,7 @@ footer a{color:var(--muted)}
   <div class="close">
     <div class="wrap">
       <h2 class="rv">List your first item in a minute.</h2>
-      <div class="ctas rv d1"><a class="btn" href="app.html#/sell/new">Start selling</a><a class="btn ghost" href="app.html#/">Browse</a></div>
+      <div class="ctas rv d1"><a class="btn" href="app.html#/sell/new">Start selling</a><a class="btn ghost" href="app.html#/">Browse</a><button type="button" class="btn ghost" data-install hidden>Install the app</button></div>
     </div>
   </div>
 </main>
@@ -533,5 +541,6 @@ footer a{color:var(--muted)}
     r.setAttribute('fill', 'url(#eqg)'); r.setAttribute('class', 'bar'); r.style.animationDelay = (i * 60) + 'ms'; eq.appendChild(r); });
 })();
 </script>
+<script src="pwa.js?v=11"></script>
 </body>
 </html>
